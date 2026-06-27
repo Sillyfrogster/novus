@@ -1,0 +1,9 @@
+{
+  "ignore": [
+    "vendor/**",
+    "**/vendor/**",
+    "foliate-js/**",
+    "**/foliate-js/**",
+    "src/vendor/**"
+  ]
+}

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { Book } from "../../lib/types";
-import { spineLook } from "./spine";
+import { spineLook } from "./spineLook";
 import { Spine } from "./Spine";
 import styles from "./Library.module.css";
 

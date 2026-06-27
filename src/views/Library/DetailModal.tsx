@@ -5,7 +5,7 @@ import { coverUrl } from "../../lib/assets";
 import { bookToc } from "../../lib/ipc";
 import type { Book, TocEntry } from "../../lib/types";
 import { useLibrary } from "../../store/library";
-import { spineLook } from "./spine";
+import { spineLook } from "./spineLook";
 import styles from "./DetailModal.module.css";
 
 const GROW_MS = 360;

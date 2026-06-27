@@ -1,6 +1,6 @@
 import { coverUrl } from "../../lib/assets";
 import type { Book } from "../../lib/types";
-import { spineLook } from "./spine";
+import { spineLook } from "./spineLook";
 import styles from "./Library.module.css";
 
 const PREVIEW_WIDTH = 288;

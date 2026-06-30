@@ -66,6 +66,12 @@ pub fn run() {
             commands::log_session,
             commands::week_stats,
             commands::set_zoom_locked,
+            commands::list_highlights,
+            commands::add_highlight,
+            commands::set_highlight_color,
+            commands::set_highlight_note,
+            commands::delete_highlight,
+            commands::write_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

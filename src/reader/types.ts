@@ -12,11 +12,28 @@ export interface RelocateDetail {
   fraction: number;
   cfi: string | null;
   tocItem?: { label?: string } | null;
+  location?: { current: number; total: number } | null;
 }
 
 export interface LoadDetail {
   doc: Document;
   index: number;
+}
+
+/** A finalized text selection inside the book. */
+export interface SelectionDetail {
+  text: string;
+  cfi: string | null;
+  sectionIndex: number;
+  rect: { top: number; bottom: number; left: number; right: number };
+}
+
+/** The minimum a highlight needs to be drawn. */
+export interface RenderHighlight {
+  id: string;
+  cfi: string;
+  color: string;
+  sectionIndex: number;
 }
 
 export type Flow = "paginated" | "scrolled";
@@ -27,12 +44,17 @@ export interface ReaderSurface {
   next(): void;
   prev(): void;
   setFlow(flow: Flow): void;
+  setMaxInlineSize(px: number): void;
   setStyles(css: string): void;
   resetPosition(): Promise<void>;
+  setHighlights(highlights: RenderHighlight[], newId?: string): void;
+  goToHighlight(cfi: string): Promise<boolean>;
+  clearSelection(): void;
   readonly toc: TocItem[];
   destroy(): void;
   on(type: "relocate", cb: (detail: RelocateDetail) => void): void;
   on(type: "load", cb: (detail: LoadDetail) => void): void;
+  on(type: "selection", cb: (detail: SelectionDetail | null) => void): void;
 }
 
 export interface EpubSection {

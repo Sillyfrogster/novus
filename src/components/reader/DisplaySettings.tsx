@@ -1,6 +1,12 @@
 import { X } from "lucide-react";
 
-import { FONT_LABELS, useReaderSettings } from "../../store/reader";
+import {
+  FONT_LABELS,
+  MEASURE_MAX,
+  MEASURE_MIN,
+  MEASURE_STEP,
+  useReaderSettings,
+} from "../../store/reader";
 import type { ReadFont, ReadLayout, ReadTheme, TextAlign } from "../../lib/types";
 import styles from "./DisplaySettings.module.css";
 
@@ -161,6 +167,28 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
                   {l.label}
                 </button>
               ))}
+            </div>
+          </section>
+
+          <section>
+            <div className={styles.rowLabel}>
+              <span className={styles.label} style={{ marginBottom: 0 }}>
+                Page width
+              </span>
+              <span className={styles.value}>{s.measure} px</span>
+            </div>
+            <div className={styles.sliderRow}>
+              <span className={styles.glyphSm}>▮</span>
+              <input
+                type="range"
+                min={MEASURE_MIN}
+                max={MEASURE_MAX}
+                step={MEASURE_STEP}
+                value={s.measure}
+                onChange={(e) => s.set("measure", Number(e.target.value))}
+                className={styles.slider}
+              />
+              <span className={styles.glyphLg}>▮▮</span>
             </div>
           </section>
 

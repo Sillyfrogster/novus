@@ -4,6 +4,11 @@ import type { ReadFont, ReadLayout, ReadTheme, TextAlign } from "../lib/types";
 
 const SETTINGS_KEY = "novus.readerSettings";
 
+/** Page width  */
+export const MEASURE_MIN = 560;
+export const MEASURE_MAX = 1000;
+export const MEASURE_STEP = 40;
+
 export interface ReaderSettings {
   readTheme: ReadTheme;
   font: ReadFont;
@@ -21,7 +26,7 @@ const DEFAULTS: ReaderSettings = {
   font: "serif",
   fontSize: 19,
   lineHeight: 1.7,
-  measure: 84,
+  measure: 720,
   paragraphSpacing: 0.5,
   align: "left",
   layout: "paged",
@@ -31,7 +36,13 @@ const DEFAULTS: ReaderSettings = {
 function loadSettings(): ReaderSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<ReaderSettings>) };
+    if (raw) {
+      const merged = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<ReaderSettings>) };
+      if (merged.measure < MEASURE_MIN || merged.measure > MEASURE_MAX) {
+        merged.measure = DEFAULTS.measure;
+      }
+      return merged;
+    }
   } catch {
     // fall through to defaults
   }

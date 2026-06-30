@@ -2,6 +2,7 @@
  * NovusRenderer.
  */
 import { getVisibleRange, uncollapse, type RectMapper } from "./geometry";
+import { unwrapHighlightMarks, wrapRangeInMarks } from "./highlightMarks";
 import type {
   EpubBook,
   EpubSection,
@@ -9,10 +10,18 @@ import type {
   LoadDetail,
   ReaderSurface,
   RelocateDetail,
+  RenderHighlight,
+  SelectionDetail,
   TocItem,
 } from "./types";
 
 type ScrollReason = "anchor" | "navigation" | "page" | "scroll" | "resize";
+
+/** Treat our own highlight marks as transparent to CFI computation */
+const cfiFilter = (node: Node): number =>
+  node.nodeType === 1 && (node as Element).classList?.contains("nv-hl")
+    ? NodeFilter.FILTER_SKIP
+    : NodeFilter.FILTER_ACCEPT;
 
 const setStylesImportant = (el: HTMLElement, styles: Record<string, string>) => {
   for (const [k, v] of Object.entries(styles)) el.style.setProperty(k, v, "important");
@@ -39,6 +48,12 @@ interface Layout {
   gap: number;
   columnWidth: number;
   margin: number;
+}
+
+/** Shape of foliate `SectionProgress.getProgress` that we're reliant on */
+interface SectionProgressResult {
+  fraction: number;
+  location: { current: number; next: number; total: number };
 }
 
 const ELEMENT_STYLE: Partial<CSSStyleDeclaration> = {
@@ -91,6 +106,10 @@ export class NovusRenderer implements ReaderSurface {
   #observer: ResizeObserver;
   #relocateCb: ((d: RelocateDetail) => void) | null = null;
   #loadCb: ((d: LoadDetail) => void) | null = null;
+  #selectionCb: ((d: SelectionDetail | null) => void) | null = null;
+
+  #highlights: RenderHighlight[] = [];
+  #newHighlightId: string | null = null;
 
   constructor(host: HTMLElement) {
     this.#host = host;
@@ -118,9 +137,11 @@ export class NovusRenderer implements ReaderSurface {
 
   on(type: "relocate", cb: (d: RelocateDetail) => void): void;
   on(type: "load", cb: (d: LoadDetail) => void): void;
-  on(type: "relocate" | "load", cb: (d: never) => void): void {
+  on(type: "selection", cb: (d: SelectionDetail | null) => void): void;
+  on(type: "relocate" | "load" | "selection", cb: (d: never) => void): void {
     if (type === "relocate") this.#relocateCb = cb as (d: RelocateDetail) => void;
-    else this.#loadCb = cb as (d: LoadDetail) => void;
+    else if (type === "load") this.#loadCb = cb as (d: LoadDetail) => void;
+    else this.#selectionCb = cb as (d: SelectionDetail | null) => void;
   }
 
   async open(file: File): Promise<void> {
@@ -190,6 +211,13 @@ export class NovusRenderer implements ReaderSurface {
     if (this.#iframe?.contentDocument) this.#render("navigation");
   }
 
+  /** Set the target column / content width */
+  setMaxInlineSize(px: number): void {
+    if (px === this.maxInlineSize) return;
+    this.maxInlineSize = px;
+    if (this.#iframe?.contentDocument) this.#render("resize");
+  }
+
   setStyles(css: string): void {
     this.#styles = css;
     if (this.#styleEl) this.#styleEl.textContent = css;
@@ -197,6 +225,39 @@ export class NovusRenderer implements ReaderSurface {
     if (doc) {
       requestAnimationFrame(() => (this.#container.style.background = getBackground(doc)));
       doc.fonts?.ready?.then(() => this.#expand());
+    }
+  }
+
+  setHighlights(highlights: RenderHighlight[], newId?: string): void {
+    this.#highlights = highlights;
+    this.#newHighlightId = newId ?? null;
+    const doc = this.#iframe?.contentDocument;
+    if (!doc) return;
+    this.#renderHighlights(doc);
+    try {
+      this.#anchor = this.#getVisibleRange();
+    } catch {
+    }
+  }
+
+  clearSelection(): void {
+    this.#iframe?.contentDocument?.getSelection()?.removeAllRanges();
+    this.#selectionCb?.(null);
+  }
+
+  /** Navigate to a highlight by CFI. */
+  async goToHighlight(cfi: string): Promise<boolean> {
+    const CFI = this.#cfi;
+    if (!CFI) return false;
+    try {
+      const parts = CFI.parse(cfi);
+      const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
+      if (!this.#canGoToIndex(index)) return false;
+      await this.#display(index, (doc) => CFI.toRange(doc, parts, cfiFilter), "navigation");
+      return true;
+    } catch (e) {
+      console.warn(`NovusRenderer: could not navigate to highlight ${cfi}`, e);
+      return false;
     }
   }
 
@@ -297,7 +358,64 @@ export class NovusRenderer implements ReaderSurface {
     }
     doc.documentElement.lang ||= "";
     this.#handleLinks(doc);
+    this.#bindSelection(doc);
+    this.#renderHighlights(doc);
     this.#loadCb?.({ doc, index: this.#index });
+  }
+
+  // selection capture
+
+  #bindSelection(doc: Document): void {
+    doc.addEventListener("mousedown", () => this.#selectionCb?.(null));
+    doc.addEventListener("mouseup", () => this.#reportSelection(doc));
+    doc.addEventListener("keyup", () => this.#reportSelection(doc));
+  }
+
+  #reportSelection(doc: Document): void {
+    const cb = this.#selectionCb;
+    if (!cb) return;
+    const sel = doc.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return cb(null);
+    const text = sel.toString().replace(/\s+/g, " ").trim();
+    if (!text) return cb(null);
+    const range = sel.getRangeAt(0);
+    const r = range.getBoundingClientRect();
+    const fr = this.#iframe.getBoundingClientRect();
+    cb({
+      text,
+      cfi: this.#getCFI(range),
+      sectionIndex: this.#index,
+      rect: { top: fr.top + r.top, bottom: fr.top + r.bottom, left: fr.left + r.left, right: fr.left + r.right },
+    });
+  }
+
+  // highlight marks
+
+  #renderHighlights(doc: Document): void {
+    const CFI = this.#cfi;
+    if (!CFI || !doc.body) return;
+    unwrapHighlightMarks(doc);
+    const here = this.#highlights.filter((h) => h.sectionIndex === this.#index);
+    if (here.length === 0) return;
+    const resolved: { h: RenderHighlight; range: Range }[] = [];
+    for (const h of here) {
+      try {
+        const r = this.#resolve(h.cfi);
+        if (!r || r.index !== this.#index || !r.anchor) continue;
+        const range = r.anchor(doc) as Range;
+        if (range && range.collapsed === false) resolved.push({ h, range });
+      } catch {
+      }
+    }
+    resolved.sort((a, b) => b.range.compareBoundaryPoints(Range.START_TO_START, a.range));
+    for (const { h, range } of resolved) {
+      wrapRangeInMarks(range, {
+        id: h.id,
+        color: h.color,
+        isNew: h.id === this.#newHighlightId,
+      });
+    }
+    this.#newHighlightId = null;
   }
 
   #handleLinks(doc: Document): void {
@@ -534,13 +652,19 @@ export class NovusRenderer implements ReaderSurface {
         pageFraction = 1 / textPages;
       }
 
-      const progress = this.#sectionProgress?.getProgress(this.#index, fractionInSection, pageFraction);
+      const progress = this.#sectionProgress?.getProgress(
+        this.#index,
+        fractionInSection,
+        pageFraction,
+      ) as SectionProgressResult | undefined;
       const tocItem = this.#tocProgress?.getProgress(this.#index, range) ?? null;
       const cfi = this.#getCFI(range);
+      const loc = progress?.location;
       this.#relocateCb?.({
         fraction: progress?.fraction ?? fractionInSection,
         cfi,
         tocItem,
+        location: loc ? { current: loc.current, total: loc.total } : null,
       });
     } catch (e) {
       console.warn("NovusRenderer: relocate reporting failed", e);
@@ -552,7 +676,7 @@ export class NovusRenderer implements ReaderSurface {
     if (!CFI) return null;
     try {
       const base = this.#sections[this.#index]?.cfi ?? CFI.fake.fromIndex(this.#index);
-      return CFI.joinIndir(base, CFI.fromRange(range));
+      return CFI.joinIndir(base, CFI.fromRange(range, cfiFilter));
     } catch {
       return null;
     }

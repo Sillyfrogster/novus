@@ -33,6 +33,24 @@ export interface Collection {
   bookIds: string[];
 }
 
+/** The fixed set of highlight color slots. */
+export type HighlightColorKey = "slate" | "sage" | "violet" | "rose";
+
+/** A highlighted passage. Mirrors the backend `Highlight` struct. */
+export interface Highlight {
+  id: string;
+  bookId: string;
+  cfi: string;
+  text: string;
+  chapterLabel: string | null;
+  chapterHref: string | null;
+  sectionIndex: number;
+  location: number | null;
+  color: HighlightColorKey;
+  note: string | null;
+  createdAt: number;
+}
+
 export interface WeekStats {
   streakDays: number;
   seconds: number;

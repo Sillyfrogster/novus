@@ -1,12 +1,52 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Play, RotateCcw, Trash2, X } from "lucide-react";
 
 import { coverUrl } from "../../lib/assets";
 import { bookToc } from "../../lib/ipc";
-import type { Book, TocEntry } from "../../lib/types";
+import {
+  copyText,
+  fileStem,
+  formatMarkdown,
+  formatObsidian,
+  formatPlain,
+  saveImageFile,
+  saveTextFile,
+} from "../../lib/highlightExport";
+import type { Book, Highlight, TocEntry } from "../../lib/types";
+import { useHighlights } from "../../store/highlights";
 import { useLibrary } from "../../store/library";
+import { HighlightContextMenu } from "./HighlightContextMenu";
+import { renderHighlightCard } from "./HighlightShareCard";
 import { spineLook } from "./spineLook";
 import styles from "./DetailModal.module.css";
+
+type DetailTab = "overview" | "highlights";
+
+interface ChapterGroup {
+  label: string;
+  items: Highlight[];
+}
+
+function groupByChapter(highlights: Highlight[]): ChapterGroup[] {
+  const groups: ChapterGroup[] = [];
+  for (const h of highlights) {
+    const label = h.chapterLabel?.trim() || "Unlabeled";
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(h);
+    else groups.push({ label, items: [h] });
+  }
+  return groups;
+}
+
+function highlightDate(createdAt: number): string {
+  return new Date(createdAt * 1000).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+const UNDO_MS = 6000;
 
 const GROW_MS = 360;
 
@@ -24,7 +64,7 @@ const TOC_COLLAPSED = 8;
 
 function collapsedTransform(rect: DOMRect | null): string {
   if (!rect) return "translate(-50%, -50%) scale(0.94)";
-  const modalW = Math.min(740, window.innerWidth - 120);
+  const modalW = Math.min(1000, window.innerWidth - 120);
   const dx = rect.left + rect.width / 2 - window.innerWidth / 2;
   const dy = rect.top + rect.height / 2 - window.innerHeight / 2;
   const scale = Math.max(0.04, rect.width / modalW);
@@ -70,6 +110,51 @@ export function DetailModal({
   const [tocExpanded, setTocExpanded] = useState(false);
   const [phase, setPhase] = useState<GrowPhase>("enter");
   const modalRef = useRef<HTMLDivElement>(null);
+
+  const highlights = useHighlights((s) => s.highlights);
+  const colors = useHighlights((s) => s.colors);
+  const [tab, setTab] = useState<DetailTab>("overview");
+  const [menu, setMenu] = useState<{ x: number; y: number; h: Highlight } | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [undo, setUndo] = useState<Highlight | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const groups = useMemo(() => groupByChapter(highlights), [highlights]);
+
+  // Load this book's highlights for the Highlights tab.
+  useEffect(() => {
+    useHighlights.getState().loadFor(book.id);
+  }, [book.id]);
+
+  useEffect(
+    () => () => {
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+    },
+    [],
+  );
+
+  const removeHighlight = async (h: Highlight) => {
+    await useHighlights.getState().remove(h.id);
+    setExpandedId((id) => (id === h.id ? null : id));
+    setUndo(h);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
+  };
+
+  const restoreHighlight = () => {
+    if (undo) useHighlights.getState().restore(undo);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo(null);
+  };
+
+  const shareImage = async (h: Highlight) => {
+    try {
+      const blob = await renderHighlightCard(h, book);
+      await saveImageFile(blob, `${fileStem(book)}-highlight.png`);
+    } catch {
+      // cancelled or render failure
+    }
+  };
 
   useLayoutEffect(() => {
     const id = requestAnimationFrame(() => setPhase("open"));
@@ -188,6 +273,29 @@ export function DetailModal({
           <h2 className={styles.modalTitle}>{book.title}</h2>
           <div className={styles.modalAuthor}>{book.author}</div>
 
+          <div className={styles.tabs} role="tablist" aria-label="Book detail sections">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "overview"}
+              className={`${styles.tab} ${tab === "overview" ? styles.tabOn : ""}`}
+              onClick={() => setTab("overview")}
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "highlights"}
+              className={`${styles.tab} ${tab === "highlights" ? styles.tabOn : ""}`}
+              onClick={() => setTab("highlights")}
+            >
+              Highlights{highlights.length ? ` · ${highlights.length}` : ""}
+            </button>
+          </div>
+
+          {tab === "overview" && (
+            <>
           {book.description && <p className={styles.modalSynopsis}>{book.description}</p>}
 
           <div className={styles.metaRow}>
@@ -315,8 +423,103 @@ export function DetailModal({
               />
             )}
           </div>
+            </>
+          )}
+
+          {tab === "highlights" && (
+            <div className={styles.hlTab}>
+              {highlights.length === 0 ? (
+                <div className={styles.hlEmpty}>
+                  <p className={styles.hlEmptyLead}>No highlights yet.</p>
+                  <p className={styles.hlEmptyHint}>
+                    Open the book and select any passage to keep it here.
+                  </p>
+                </div>
+              ) : (
+                groups.map((group, gi) => (
+                  <section key={`${group.label}-${gi}`} className={styles.hlGroup}>
+                    <div className={styles.hlChapter}>{group.label}</div>
+                    {group.items.map((h) => (
+                      <div key={h.id} className={styles.hlRow}>
+                        <button
+                          type="button"
+                          className={styles.hlMain}
+                          onClick={() => onRead(book, h.cfi)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setMenu({ x: e.clientX, y: e.clientY, h });
+                          }}
+                          title="Open at this highlight  (right-click for more)"
+                        >
+                          <span
+                            className={styles.hlTick}
+                            style={{ background: colors[h.color]?.color ?? colors.slate.color }}
+                            aria-hidden="true"
+                          />
+                          <span className={styles.hlText}>{h.text}</span>
+                        </button>
+                        {expandedId === h.id && (
+                          <dl className={styles.hlDetails}>
+                            <div>
+                              <dt>When</dt>
+                              <dd>{highlightDate(h.createdAt)}</dd>
+                            </div>
+                            <div>
+                              <dt>Color</dt>
+                              <dd>{colors[h.color]?.label ?? h.color}</dd>
+                            </div>
+                            <div>
+                              <dt>Where</dt>
+                              <dd>
+                                {[h.chapterLabel?.trim(), h.location != null ? `Location ${h.location + 1}` : null]
+                                  .filter(Boolean)
+                                  .join(" · ") || "—"}
+                              </dd>
+                            </div>
+                            {h.note && (
+                              <div>
+                                <dt>Why</dt>
+                                <dd>{h.note}</dd>
+                              </div>
+                            )}
+                          </dl>
+                        )}
+                      </div>
+                    ))}
+                  </section>
+                ))
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {menu && (
+        <HighlightContextMenu
+          x={menu.x}
+          y={menu.y}
+          onDetails={() => setExpandedId((id) => (id === menu.h.id ? null : menu.h.id))}
+          onCopy={() => copyText(formatPlain(menu.h, book))}
+          onShareImage={() => shareImage(menu.h)}
+          onExportMarkdown={() =>
+            saveTextFile(formatMarkdown(menu.h, book), `${fileStem(book)}-highlight.md`, "Markdown", "md")
+          }
+          onExportObsidian={() =>
+            saveTextFile(formatObsidian(menu.h, book), `${fileStem(book)}-highlight.md`, "Markdown", "md")
+          }
+          onDelete={() => removeHighlight(menu.h)}
+          onClose={() => setMenu(null)}
+        />
+      )}
+
+      {undo && (
+        <div className={styles.undo} role="status">
+          Highlight removed
+          <button type="button" className={styles.undoBtn} onClick={restoreHighlight}>
+            Undo
+          </button>
+        </div>
+      )}
     </>
   );
 }

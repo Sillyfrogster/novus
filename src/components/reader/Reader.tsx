@@ -1,14 +1,26 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Highlighter, List, X } from "lucide-react";
 
 import { bookUrl } from "../../lib/assets";
 import { getReadingState, logSession, saveReadingState } from "../../lib/ipc";
+import {
+  HIGHLIGHT_COLOR_KEYS,
+  tintFor,
+  type HighlightColor,
+} from "../../lib/highlightColors";
+import type { HighlightColorKey } from "../../lib/types";
 import { NovusRenderer } from "../../reader/NovusRenderer";
-import type { TocItem } from "../../reader/types";
+import type { RenderHighlight, SelectionDetail, TocItem } from "../../reader/types";
 import { FONT_STACKS, useReaderSettings, type ReaderSettings } from "../../store/reader";
+import { useHighlights } from "../../store/highlights";
 import { useLibrary } from "../../store/library";
 import { DisplaySettings } from "./DisplaySettings";
+import { HighlightBar } from "./HighlightBar";
+import { HighlightsPanel } from "./HighlightsPanel";
+import { WhyBox } from "./WhyBox";
 import styles from "./Reader.module.css";
+
+type ColorMap = Record<HighlightColorKey, HighlightColor>;
 
 /* filename */
 function hrefTail(href: string): string {
@@ -30,6 +42,7 @@ function resolveTocTarget(toc: TocItem[] | undefined, target: string): string {
 
 function applyLayout(renderer: NovusRenderer, s: ReaderSettings): void {
   renderer.setFlow(s.layout === "paged" ? "paginated" : "scrolled");
+  renderer.setMaxInlineSize(s.measure);
 }
 
 const READ_THEMES: Record<ReaderSettings["readTheme"], { bg: string; ink: string }> = {
@@ -39,7 +52,30 @@ const READ_THEMES: Record<ReaderSettings["readTheme"], { bg: string; ink: string
 };
 const CHROME_IDLE_MS = 2600;
 
-function buildBookCss(s: ReaderSettings): string {
+function buildHighlightCss(colors: ColorMap): string {
+  const slots = HIGHLIGHT_COLOR_KEYS.map(
+    (key) =>
+      `mark.nv-hl[data-color="${key}"] { background-image: linear-gradient(${tintFor(colors[key].color)}, ${tintFor(colors[key].color)}); }`,
+  ).join("\n");
+  return `
+    mark.nv-hl {
+      color: inherit !important;
+      background-color: transparent;
+      background-repeat: no-repeat;
+      background-position: 0 0;
+      background-size: 100% 100%;
+      border-radius: 2px;
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+    }
+    ${slots}
+    @keyframes nvHlSweep { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }
+    mark.nv-hl-new { animation: nvHlSweep 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+    @media (prefers-reduced-motion: reduce) { mark.nv-hl-new { animation: none; } }
+  `;
+}
+
+function buildBookCss(s: ReaderSettings, colors: ColorMap): string {
   const t = READ_THEMES[s.readTheme];
   const justify = s.align === "justify";
   const embedded = `
@@ -86,6 +122,7 @@ function buildBookCss(s: ReaderSettings): string {
     ${embedded}
     a:link, a:visited { color: ${t.ink} !important; }
     pre { white-space: pre-wrap !important; }
+    ${buildHighlightCss(colors)}
   `;
 }
 
@@ -96,6 +133,9 @@ export function Reader() {
   const goLibrary = useLibrary((s) => s.goLibrary);
   const consumePendingLocator = useLibrary((s) => s.consumePendingLocator);
   const settings = useReaderSettings();
+
+  const highlights = useHighlights((s) => s.highlights);
+  const colors = useHighlights((s) => s.colors);
 
   const book = books.find((b) => b.id === activeBookId) ?? null;
 
@@ -108,15 +148,21 @@ export function Reader() {
 
   const [ready, setReady] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [location, setLocation] = useState<{ current: number; total: number } | null>(null);
   const [chapter, setChapter] = useState("");
   const [toc, setToc] = useState<TocItem[]>([]);
   const [tocOpen, setTocOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [chromeHidden, setChromeHidden] = useState(false);
+  const [selection, setSelection] = useState<SelectionDetail | null>(null);
+  const [whyForId, setWhyForId] = useState<string | null>(null);
+
+  const pendingNewId = useRef<string | null>(null);
 
   const chromeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayOpenRef = useRef(false);
-  overlayOpenRef.current = settingsOpen || tocOpen;
+  overlayOpenRef.current = settingsOpen || tocOpen || panelOpen;
 
   const revealChrome = useCallback(() => {
     setChromeHidden(false);
@@ -134,6 +180,7 @@ export function Reader() {
     const onRelocate = (detail: import("../../reader/types").RelocateDetail) => {
       const fraction = detail.fraction ?? 0;
       setProgress(fraction);
+      setLocation(detail.location ?? null);
       if (detail.tocItem?.label) setChapter(detail.tocItem.label);
       if (fraction > prevFraction.current + 0.0005) pagesTurned.current += 1;
       prevFraction.current = fraction;
@@ -162,6 +209,7 @@ export function Reader() {
       viewRef.current = renderer;
       renderer.on("relocate", onRelocate);
       renderer.on("load", onLoad);
+      renderer.on("selection", (d) => setSelection(d));
       await renderer.open(file);
       if (cancelled) {
         renderer.destroy();
@@ -169,7 +217,7 @@ export function Reader() {
       }
 
       applyLayout(renderer, settings);
-      renderer.setStyles(buildBookCss(settings));
+      renderer.setStyles(buildBookCss(settings, colors));
       setToc(renderer.toc);
 
       const pending = consumePendingLocator();
@@ -205,28 +253,52 @@ export function Reader() {
     const renderer = viewRef.current;
     if (!renderer || !ready) return;
     applyLayout(renderer, settings);
-    renderer.setStyles(buildBookCss(settings));
+    renderer.setStyles(buildBookCss(settings, colors));
   }, [
     ready,
     settings.layout,
+    settings.measure,
     settings.font,
     settings.fontSize,
     settings.lineHeight,
     settings.paragraphSpacing,
     settings.align,
     settings.readTheme,
+    colors,
   ]);
 
-  // Keyboard paging.
+  // Load this book's highlights when it opens.
+  useEffect(() => {
+    if (book?.id) useHighlights.getState().loadFor(book.id);
+  }, [book?.id]);
+
+  const renderSig = useMemo(
+    () => highlights.map((h) => `${h.id}:${h.cfi}:${h.color}:${h.sectionIndex}`).join("|"),
+    [highlights],
+  );
+  useEffect(() => {
+    const renderer = viewRef.current;
+    if (!renderer || !ready) return;
+    const list: RenderHighlight[] = highlights.map((h) => ({
+      id: h.id,
+      cfi: h.cfi,
+      color: h.color,
+      sectionIndex: h.sectionIndex,
+    }));
+    renderer.setHighlights(list, pendingNewId.current ?? undefined);
+    pendingNewId.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, renderSig]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (settingsOpen || tocOpen) return;
+      if (settingsOpen || tocOpen || panelOpen || selection || whyForId) return;
       if (e.key === "ArrowRight") viewRef.current?.next();
       else if (e.key === "ArrowLeft") viewRef.current?.prev();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [settingsOpen, tocOpen]);
+  }, [settingsOpen, tocOpen, panelOpen, selection, whyForId]);
 
   // Auto-hide the chrome on idle; any pointer/key activity brings it back.
   useEffect(() => {
@@ -244,21 +316,56 @@ export function Reader() {
 
   // Keep the chrome present the whole time a drawer is open.
   useEffect(() => {
-    if (settingsOpen || tocOpen) {
+    if (settingsOpen || tocOpen || panelOpen) {
       setChromeHidden(false);
       if (chromeTimer.current) clearTimeout(chromeTimer.current);
     } else if (ready) {
       revealChrome();
     }
-  }, [settingsOpen, tocOpen, ready, revealChrome]);
+  }, [settingsOpen, tocOpen, panelOpen, ready, revealChrome]);
 
   if (!book) return null;
 
   const pct = Math.round(progress * 100);
+  const pageLabel =
+    location && location.total > 0
+      ? `Page ${Math.min(location.total, location.current + 1)} of ${location.total}`
+      : chapter || "Reading";
 
   const goToToc = (href: string) => {
     setTocOpen(false);
     viewRef.current?.goTo(href).catch(() => {});
+  };
+
+  const onPickColor = async (color: HighlightColorKey) => {
+    if (!selection || !selection.cfi || !book) return;
+    const id = crypto.randomUUID();
+    pendingNewId.current = id;
+    const saved = await useHighlights.getState().capture({
+      id,
+      bookId: book.id,
+      cfi: selection.cfi,
+      text: selection.text,
+      chapterLabel: chapter || null,
+      chapterHref: null,
+      sectionIndex: selection.sectionIndex,
+      location: location?.current ?? null,
+      color,
+    });
+    viewRef.current?.clearSelection();
+    setSelection(null);
+    if (saved) setWhyForId(saved.id);
+    else pendingNewId.current = null;
+  };
+
+  const dismissSelection = () => {
+    viewRef.current?.clearSelection();
+    setSelection(null);
+  };
+
+  const jumpToHighlight = (cfi: string) => {
+    setPanelOpen(false);
+    viewRef.current?.goToHighlight(cfi).catch(() => {});
   };
 
   return (
@@ -282,6 +389,14 @@ export function Reader() {
             disabled={toc.length === 0}
           >
             <List size={17} strokeWidth={1.8} />
+          </button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            title="Highlights"
+            onClick={() => setPanelOpen(true)}
+          >
+            <Highlighter size={17} strokeWidth={1.8} />
           </button>
           <button type="button" className={styles.aaBtn} title="Display settings" onClick={() => setSettingsOpen(true)}>
             Aa
@@ -323,7 +438,7 @@ export function Reader() {
         <button type="button" className={styles.iconBtn} onClick={() => viewRef.current?.prev()} title="Previous">
           <ChevronLeft size={16} strokeWidth={1.8} />
         </button>
-        <span className={styles.pageLabel}>{chapter || "Reading"}</span>
+        <span className={styles.pageLabel}>{pageLabel}</span>
         <div className={styles.progressTrack}>
           <div className={styles.progressFill} style={{ width: `${pct}%` }} />
         </div>
@@ -360,6 +475,29 @@ export function Reader() {
       )}
 
       {settingsOpen && <DisplaySettings onClose={() => setSettingsOpen(false)} />}
+
+      {panelOpen && (
+        <HighlightsPanel onJump={jumpToHighlight} onClose={() => setPanelOpen(false)} />
+      )}
+
+      {selection && (
+        <HighlightBar
+          rect={selection.rect}
+          colors={colors}
+          onPick={onPickColor}
+          onDismiss={dismissSelection}
+        />
+      )}
+
+      {whyForId && (
+        <WhyBox
+          onSave={(note) => {
+            useHighlights.getState().updateNote(whyForId, note);
+            setWhyForId(null);
+          }}
+          onDismiss={() => setWhyForId(null)}
+        />
+      )}
     </div>
   );
 }

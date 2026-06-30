@@ -1,6 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { Book, Collection, ReadingState, TocEntry, WeekStats } from "./types";
+import type {
+  Book,
+  Collection,
+  Highlight,
+  HighlightColorKey,
+  ReadingState,
+  TocEntry,
+  WeekStats,
+} from "./types";
 
 /** Typed wrappers over the Rust command surface. */
 
@@ -78,4 +86,43 @@ export function logSession(
 
 export function weekStats(): Promise<WeekStats> {
   return invoke<WeekStats>("week_stats");
+}
+
+// highlights
+
+export interface NewHighlight {
+  id: string;
+  bookId: string;
+  cfi: string;
+  text: string;
+  chapterLabel: string | null;
+  chapterHref: string | null;
+  sectionIndex: number;
+  location: number | null;
+  color: HighlightColorKey;
+  note: string | null;
+}
+
+export function listHighlights(bookId: string): Promise<Highlight[]> {
+  return invoke<Highlight[]>("list_highlights", { bookId });
+}
+
+export function addHighlight(h: NewHighlight): Promise<Highlight> {
+  return invoke<Highlight>("add_highlight", { ...h });
+}
+
+export function setHighlightColor(id: string, color: HighlightColorKey): Promise<void> {
+  return invoke<void>("set_highlight_color", { id, color });
+}
+
+export function setHighlightNote(id: string, note: string | null): Promise<void> {
+  return invoke<void>("set_highlight_note", { id, note });
+}
+
+export function deleteHighlight(id: string): Promise<void> {
+  return invoke<void>("delete_highlight", { id });
+}
+
+export function writeFile(path: string, contents: Uint8Array): Promise<void> {
+  return invoke<void>("write_file", { path, contents: Array.from(contents) });
 }

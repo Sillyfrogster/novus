@@ -1,0 +1,41 @@
+.bar {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 11px);
+  box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.8);
+  animation: nvMenu 0.16s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.dot {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--dot) 60%, var(--line));
+  background: color-mix(in srgb, var(--dot) 82%, transparent);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.dot:hover {
+  transform: scale(1.16);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dot) 24%, transparent);
+}
+.dot:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dot) 38%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    animation: none;
+  }
+  .dot {
+    transition: none;
+  }
+}

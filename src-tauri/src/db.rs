@@ -48,6 +48,23 @@ pub struct Collection {
     pub book_ids: Vec<String>,
 }
 
+/// A passage the reader has highlighted in a book.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Highlight {
+    pub id: String,
+    pub book_id: String,
+    pub cfi: String,
+    pub text: String,
+    pub chapter_label: Option<String>,
+    pub chapter_href: Option<String>,
+    pub section_index: i64,
+    pub location: Option<i64>,
+    pub color: String,
+    pub note: Option<String>,
+    pub created_at: i64,
+}
+
 /// Aggregate reading activity for the trailing seven days.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -149,6 +166,27 @@ impl Db {
             conn.execute_batch(
                 "ALTER TABLE books ADD COLUMN description TEXT;
                  PRAGMA user_version = 3;",
+            )?;
+        }
+
+        if version < 4 {
+            conn.execute_batch(
+                "CREATE TABLE highlights (
+                    id             TEXT PRIMARY KEY,
+                    book_id        TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                    cfi            TEXT NOT NULL,
+                    text           TEXT NOT NULL,
+                    chapter_label  TEXT,
+                    chapter_href   TEXT,
+                    section_index  INTEGER NOT NULL,
+                    location       INTEGER,
+                    color          TEXT NOT NULL,
+                    note           TEXT,
+                    created_at     INTEGER NOT NULL
+                 );
+                 CREATE INDEX idx_highlights_book
+                    ON highlights(book_id, section_index, location);
+                 PRAGMA user_version = 4;",
             )?;
         }
 
@@ -394,6 +432,76 @@ impl Db {
                 last_read_at = excluded.last_read_at",
             rusqlite::params![book_id, locator, progress, now],
         )?;
+        Ok(())
+    }
+
+    // highlights
+
+    // all highlights for a book, ordered by their position in the book.
+    pub fn list_highlights(&self, book_id: &str) -> AppResult<Vec<Highlight>> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, book_id, cfi, text, chapter_label, chapter_href,
+                    section_index, location, color, note, created_at
+             FROM highlights
+             WHERE book_id = ?1
+             ORDER BY section_index ASC, location ASC, created_at ASC",
+        )?;
+        let rows = stmt.query_map([book_id], |r| {
+            Ok(Highlight {
+                id: r.get(0)?,
+                book_id: r.get(1)?,
+                cfi: r.get(2)?,
+                text: r.get(3)?,
+                chapter_label: r.get(4)?,
+                chapter_href: r.get(5)?,
+                section_index: r.get(6)?,
+                location: r.get(7)?,
+                color: r.get(8)?,
+                note: r.get(9)?,
+                created_at: r.get(10)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn add_highlight(&self, h: &Highlight) -> AppResult<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "INSERT INTO highlights
+                (id, book_id, cfi, text, chapter_label, chapter_href,
+                 section_index, location, color, note, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            rusqlite::params![
+                h.id, h.book_id, h.cfi, h.text, h.chapter_label, h.chapter_href,
+                h.section_index, h.location, h.color, h.note, h.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_highlight_color(&self, id: &str, color: &str) -> AppResult<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "UPDATE highlights SET color = ?1 WHERE id = ?2",
+            rusqlite::params![color, id],
+        )?;
+        Ok(())
+    }
+
+    /// Set (or clear, with `None`) a highlight's note.
+    pub fn set_highlight_note(&self, id: &str, note: Option<String>) -> AppResult<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute(
+            "UPDATE highlights SET note = ?1 WHERE id = ?2",
+            rusqlite::params![note, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_highlight(&self, id: &str) -> AppResult<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.execute("DELETE FROM highlights WHERE id = ?1", [id])?;
         Ok(())
     }
 }

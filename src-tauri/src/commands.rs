@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 
 use tauri::State;
 
-use crate::db::{Book, Collection, ReadingState, WeekStats};
+use crate::db::{now_seconds, Book, Collection, Highlight, ReadingState, WeekStats};
 use crate::error::AppResult;
 use crate::import::{import_paths, read_epub_toc, ImportSummary, TocEntry};
 use crate::{Novus, ZoomGuard};
@@ -116,6 +116,73 @@ pub fn set_zoom_locked(locked: bool, window: tauri::WebviewWindow, guard: State<
             webview.inner().set_zoom_level(1.0);
         });
     }
+}
+
+// highlights
+
+/// Every highlight for a book, ordered by position.
+#[tauri::command]
+pub fn list_highlights(state: State<'_, Novus>, book_id: String) -> AppResult<Vec<Highlight>> {
+    state.db.list_highlights(&book_id)
+}
+
+/// Create a highlight.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn add_highlight(
+    state: State<'_, Novus>,
+    id: String,
+    book_id: String,
+    cfi: String,
+    text: String,
+    chapter_label: Option<String>,
+    chapter_href: Option<String>,
+    section_index: i64,
+    location: Option<i64>,
+    color: String,
+    note: Option<String>,
+) -> AppResult<Highlight> {
+    let highlight = Highlight {
+        id,
+        book_id,
+        cfi,
+        text,
+        chapter_label,
+        chapter_href,
+        section_index,
+        location,
+        color,
+        note,
+        created_at: now_seconds(),
+    };
+    state.db.add_highlight(&highlight)?;
+    Ok(highlight)
+}
+
+#[tauri::command]
+pub fn set_highlight_color(state: State<'_, Novus>, id: String, color: String) -> AppResult<()> {
+    state.db.set_highlight_color(&id, &color)
+}
+
+/// Set or clear (with `null`) a highlight's note.
+#[tauri::command]
+pub fn set_highlight_note(
+    state: State<'_, Novus>,
+    id: String,
+    note: Option<String>,
+) -> AppResult<()> {
+    state.db.set_highlight_note(&id, note)
+}
+
+#[tauri::command]
+pub fn delete_highlight(state: State<'_, Novus>, id: String) -> AppResult<()> {
+    state.db.delete_highlight(&id)
+}
+
+/// Write bytes to a user-chosen path.
+#[tauri::command]
+pub fn write_file(path: String, contents: Vec<u8>) -> AppResult<()> {
+    std::fs::write(&path, &contents).map_err(Into::into)
 }
 
 /// Remove a book from the library, deleting its managed file and cover.

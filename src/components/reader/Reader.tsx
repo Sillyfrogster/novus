@@ -3,37 +3,12 @@ import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 
 import { bookUrl } from "../../lib/assets";
 import { getReadingState, logSession, saveReadingState } from "../../lib/ipc";
+import { NovusRenderer } from "../../reader/NovusRenderer";
+import type { TocItem } from "../../reader/types";
 import { FONT_STACKS, useReaderSettings, type ReaderSettings } from "../../store/reader";
 import { useLibrary } from "../../store/library";
 import { DisplaySettings } from "./DisplaySettings";
 import styles from "./Reader.module.css";
-
-interface TocItem {
-  label: string;
-  href: string;
-  subitems?: TocItem[];
-}
-
-interface RelocateDetail {
-  fraction?: number;
-  tocItem?: { label?: string };
-  cfi?: string;
-}
-
-/** Minimal surface of the vendored <foliate-view> element.*/
-interface FoliateView extends HTMLElement {
-  book?: { toc?: TocItem[] };
-  renderer: {
-    setAttribute(name: string, value: string): void;
-    removeAttribute(name: string): void;
-    setStyles?(css: string): void;
-    next(): void;
-  };
-  open(book: Blob | File): Promise<void>;
-  goTo(target: string): Promise<void>;
-  prev(): Promise<void>;
-  next(): Promise<void>;
-}
 
 /* filename */
 function hrefTail(href: string): string {
@@ -53,8 +28,8 @@ function resolveTocTarget(toc: TocItem[] | undefined, target: string): string {
   return flat.find((it) => hrefTail(it.href) === tail)?.href ?? target;
 }
 
-function applyLayout(view: FoliateView, s: ReaderSettings): void {
-  view.renderer.setAttribute("flow", s.layout === "paged" ? "paginated" : "scrolled");
+function applyLayout(renderer: NovusRenderer, s: ReaderSettings): void {
+  renderer.setFlow(s.layout === "paged" ? "paginated" : "scrolled");
 }
 
 const READ_THEMES: Record<ReaderSettings["readTheme"], { bg: string; ink: string }> = {
@@ -114,7 +89,7 @@ export function Reader() {
   const book = books.find((b) => b.id === activeBookId) ?? null;
 
   const hostRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<FoliateView | null>(null);
+  const viewRef = useRef<NovusRenderer | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionStart = useRef(0);
   const pagesTurned = useRef(0);
@@ -143,10 +118,9 @@ export function Reader() {
   useEffect(() => {
     if (!book || !storageRoot) return;
     let cancelled = false;
-    let view: FoliateView | null = null;
+    let renderer: NovusRenderer | null = null;
 
-    const onRelocate = (e: Event) => {
-      const detail = (e as CustomEvent<RelocateDetail>).detail;
+    const onRelocate = (detail: import("../../reader/types").RelocateDetail) => {
       const fraction = detail.fraction ?? 0;
       setProgress(fraction);
       if (detail.tocItem?.label) setChapter(detail.tocItem.label);
@@ -158,9 +132,8 @@ export function Reader() {
       }, 800);
     };
 
-    const onLoad = (e: Event) => {
-      const doc = (e as CustomEvent<{ doc?: Document }>).detail?.doc;
-      doc?.addEventListener("mousemove", revealChrome);
+    const onLoad = (detail: import("../../reader/types").LoadDetail) => {
+      detail.doc?.addEventListener("mousemove", revealChrome);
     };
 
     sessionStart.current = Math.floor(Date.now() / 1000);
@@ -168,35 +141,36 @@ export function Reader() {
     prevFraction.current = 0;
 
     (async () => {
-      await import("../../../vendor/foliate-js/view.js");
       const url = bookUrl(book, storageRoot);
-      if (!url || cancelled) return;
+      if (!url || !hostRef.current || cancelled) return;
       const res = await fetch(url);
       const blob = await res.blob();
       const file = new File([blob], `book.${book.format}`);
 
-      view = document.createElement("foliate-view") as FoliateView;
-      hostRef.current?.appendChild(view);
-      viewRef.current = view;
-      await view.open(file);
-      if (cancelled) return;
+      renderer = new NovusRenderer(hostRef.current);
+      viewRef.current = renderer;
+      renderer.on("relocate", onRelocate);
+      renderer.on("load", onLoad);
+      await renderer.open(file);
+      if (cancelled) {
+        renderer.destroy();
+        return;
+      }
 
-      view.addEventListener("relocate", onRelocate);
-      view.addEventListener("load", onLoad);
-      applyLayout(view, settings);
-      view.renderer.setStyles?.(buildBookCss(settings));
-      setToc(view.book?.toc ?? []);
+      applyLayout(renderer, settings);
+      renderer.setStyles(buildBookCss(settings));
+      setToc(renderer.toc);
 
       const pending = consumePendingLocator();
       if (pending) {
-        const target = resolveTocTarget(view.book?.toc, pending);
-        await view.goTo(target).catch(() => view?.renderer.next());
+        const target = resolveTocTarget(renderer.toc, pending);
+        if (!(await renderer.goTo(target))) await renderer.resetPosition();
       } else {
         const saved = await getReadingState(book.id);
         if (saved?.locator) {
-          await view.goTo(saved.locator).catch(() => view?.renderer.next());
+          if (!(await renderer.goTo(saved.locator))) await renderer.resetPosition();
         } else {
-          view.renderer.next();
+          await renderer.resetPosition();
         }
       }
       setReady(true);
@@ -209,9 +183,7 @@ export function Reader() {
       if (sessionStart.current > 0 && end - sessionStart.current >= 3) {
         logSession(book.id, sessionStart.current, end, pagesTurned.current).catch(() => {});
       }
-      view?.removeEventListener("relocate", onRelocate);
-      view?.removeEventListener("load", onLoad);
-      view?.remove();
+      renderer?.destroy();
       viewRef.current = null;
       setReady(false);
     };
@@ -219,10 +191,10 @@ export function Reader() {
   }, [book?.id, storageRoot]);
 
   useEffect(() => {
-    const view = viewRef.current;
-    if (!view || !ready) return;
-    applyLayout(view, settings);
-    view.renderer.setStyles?.(buildBookCss(settings));
+    const renderer = viewRef.current;
+    if (!renderer || !ready) return;
+    applyLayout(renderer, settings);
+    renderer.setStyles(buildBookCss(settings));
   }, [
     ready,
     settings.layout,

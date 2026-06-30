@@ -8,6 +8,7 @@ import {
   listBooks,
   listCollections,
   removeBook,
+  saveReadingState,
   setCollectionMembership,
   storageRoot,
   weekStats,
@@ -53,6 +54,7 @@ interface LibraryState {
   pickAndImport: () => Promise<void>;
   importPaths: (paths: string[]) => Promise<void>;
   removeBookById: (id: string) => Promise<void>;
+  resetProgress: (id: string) => Promise<void>;
   clearError: () => void;
 
   selectCollection: (id: number | null) => void;
@@ -161,6 +163,17 @@ export const useLibrary = create<LibraryState>((set, get) => ({
           ...c,
           bookIds: c.bookIds.filter((bid) => bid !== id),
         })),
+      }));
+    } catch (e) {
+      set({ error: messageOf(e) });
+    }
+  },
+
+  resetProgress: async (id) => {
+    try {
+      await saveReadingState(id, null, 0);
+      set((s) => ({
+        books: s.books.map((b) => (b.id === id ? { ...b, progress: 0 } : b)),
       }));
     } catch (e) {
       set({ error: messageOf(e) });

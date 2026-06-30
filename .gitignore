@@ -34,3 +34,6 @@ docs/design/
 *.key
 *.key.pub
 .tauri/
+
+# stray files
+*.rdb

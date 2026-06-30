@@ -19,6 +19,17 @@ export interface Release {
 /** Newest first. Add a new entry at the top each release. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.2.0",
+    date: "2026-06-29",
+    title: "Our own renderer",
+    notes: [
+      { kind: "improved", text: "Rebuilt the reader on our own rendering engine. Your theme, fonts, and spacing now hold on every book." },
+      { kind: "fixed", text: "Some books ignored the reader's styling and showed their own background. Gone." },
+      { kind: "new", text: "Reset a book's reading progress from its details." },
+      { kind: "new", text: "Chapter count shown in book details." },
+    ],
+  },
+  {
     version: "0.1.0",
     date: "2026-06-26",
     title: "First light",

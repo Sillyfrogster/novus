@@ -138,8 +138,13 @@
 .actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 11px;
+  justify-content: flex-start;
+  gap: 14px;
+}
+.iconActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .metaFacts {
   font-family: var(--font-ui);
@@ -330,5 +335,23 @@
 }
 .removeBtn:hover {
   color: var(--danger);
+  background: var(--surface);
+}
+
+.resetBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  background: transparent;
+  color: var(--faint);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease;
+}
+.resetBtn:hover {
+  color: var(--text);
   background: var(--surface);
 }

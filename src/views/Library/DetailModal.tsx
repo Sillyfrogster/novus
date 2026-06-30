@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, Play, Trash2, X } from "lucide-react";
+import { Check, Play, RotateCcw, Trash2, X } from "lucide-react";
 
 import { coverUrl } from "../../lib/assets";
 import { bookToc } from "../../lib/ipc";
@@ -62,7 +62,8 @@ export function DetailModal({
   const collections = useLibrary((s) => s.collections);
   const toggleMembership = useLibrary((s) => s.toggleMembership);
   const addCollection = useLibrary((s) => s.addCollection);
-
+  const resetProgress = useLibrary((s) => s.resetProgress);
+  const [progress, setProgress] = useState(book.progress);
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [toc, setToc] = useState<TocEntry[] | null>(null);
@@ -191,25 +192,41 @@ export function DetailModal({
 
           <div className={styles.metaRow}>
             <span className={styles.metaFacts}>
-              {statusLabel(book.progress)}
-              {book.pageCount ? ` · ${book.pageCount} pages` : ""} · Added {addedDate(book.addedAt)}
+              {statusLabel(progress)}
+              {toc?.length ? ` · ${toc.length} chapters` : ""} · Added {addedDate(book.addedAt)}
             </span>
           </div>
 
           <div className={styles.actions}>
             <button type="button" className={styles.readBtn} onClick={() => onRead(book)}>
               <Play size={14} fill="currentColor" strokeWidth={0} />
-              {readLabel(book.progress)}
+              {readLabel(progress)}
             </button>
-            <button
-              type="button"
-              className={styles.removeBtn}
-              onClick={() => onRemove(book)}
-              title="Remove from library"
-              aria-label="Remove from library"
-            >
-              <Trash2 size={15} strokeWidth={1.7} />
-            </button>
+            <div className={styles.iconActions}>
+              {progress > 0 && (
+                <button
+                  type="button"
+                  className={styles.resetBtn}
+                  onClick={async () => {
+                    await resetProgress(book.id);
+                    setProgress(0);
+                  }}
+                  title="Reset reading progress"
+                  aria-label="Reset reading progress"
+                >
+                  <RotateCcw size={15} strokeWidth={1.7} />
+                </button>
+              )}
+              <button
+                type="button"
+                className={styles.removeBtn}
+                onClick={() => onRemove(book)}
+                title="Remove from library"
+                aria-label="Remove from library"
+              >
+                <Trash2 size={15} strokeWidth={1.7} />
+              </button>
+            </div>
           </div>
 
           <div className={styles.tocSection}>

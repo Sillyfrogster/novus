@@ -440,6 +440,9 @@ export class NovusRenderer implements ReaderSurface {
   get #start(): number {
     return Math.abs(this.#container[this.#scrollProp]);
   }
+  get #end(): number {
+    return this.#start + this.#containerSize;
+  }
   get #containerSize(): number {
     return this.#container.getBoundingClientRect()[this.#sideProp];
   }
@@ -516,28 +519,32 @@ export class NovusRenderer implements ReaderSurface {
   }
 
   #afterScroll(reason: ScrollReason): void {
-    const range = this.#getVisibleRange();
-    if (reason !== "navigation" && reason !== "anchor" && reason !== "resize") this.#anchor = range;
+    try {
+      const range = this.#getVisibleRange();
+      if (reason !== "navigation" && reason !== "anchor" && reason !== "resize") this.#anchor = range;
 
-    let fractionInSection: number;
-    let pageFraction = 0;
-    if (this.#flow === "scrolled") {
-      fractionInSection = this.#viewSize ? this.#start / this.#viewSize : 0;
-    } else {
-      const pages = this.#pages;
-      const textPages = Math.max(1, pages - 2);
-      fractionInSection = (this.#page - 1) / textPages;
-      pageFraction = 1 / textPages;
+      let fractionInSection: number;
+      let pageFraction = 0;
+      if (this.#flow === "scrolled") {
+        fractionInSection = this.#viewSize ? this.#start / this.#viewSize : 0;
+      } else {
+        const pages = this.#pages;
+        const textPages = Math.max(1, pages - 2);
+        fractionInSection = (this.#page - 1) / textPages;
+        pageFraction = 1 / textPages;
+      }
+
+      const progress = this.#sectionProgress?.getProgress(this.#index, fractionInSection, pageFraction);
+      const tocItem = this.#tocProgress?.getProgress(this.#index, range) ?? null;
+      const cfi = this.#getCFI(range);
+      this.#relocateCb?.({
+        fraction: progress?.fraction ?? fractionInSection,
+        cfi,
+        tocItem,
+      });
+    } catch (e) {
+      console.warn("NovusRenderer: relocate reporting failed", e);
     }
-
-    const progress = this.#sectionProgress?.getProgress(this.#index, fractionInSection, pageFraction);
-    const tocItem = this.#tocProgress?.getProgress(this.#index, range) ?? null;
-    const cfi = this.#getCFI(range);
-    this.#relocateCb?.({
-      fraction: progress?.fraction ?? fractionInSection,
-      cfi,
-      tocItem,
-    });
   }
 
   #getCFI(range: Range): string | null {
@@ -558,17 +565,49 @@ export class NovusRenderer implements ReaderSurface {
     this.#locked = true;
     try {
       const prev = dir === -1;
-      const atBoundary = prev ? this.#atStart : this.#atEnd;
-      if (!atBoundary) {
-        const page = this.#page + dir;
-        await this.#scrollToPage(page, "page");
-      } else {
+      // Each helper scrolls within the current section and returns true only when
+      // it has reached that section's boundary — the signal to cross sections.
+      const crossSection = prev ? await this.#scrollPrev() : await this.#scrollNext();
+      if (crossSection) {
         const index = this.#adjacentIndex(dir);
         if (index != null) await this.#display(index, prev ? 1 : 0, "navigation");
       }
     } finally {
       this.#locked = false;
     }
+  }
+
+  /** Returns true when already at the start of this section  */
+  async #scrollPrev(): Promise<boolean> {
+    if (!this.#iframe?.contentDocument) return true;
+    if (this.#flow === "scrolled") {
+      if (this.#start > 0) {
+        await this.#scrollToOffset(Math.max(0, this.#start - this.#containerSize), "page");
+        return false;
+      }
+      return true;
+    }
+    if (this.#atStart) return false;
+    const page = this.#page - 1;
+    await this.#scrollToPage(page, "page");
+    return page <= 0;
+  }
+
+  /** Returns true when already at the end of this section */
+  async #scrollNext(): Promise<boolean> {
+    if (!this.#iframe?.contentDocument) return true;
+    if (this.#flow === "scrolled") {
+      if (this.#viewSize - this.#end > 2) {
+        await this.#scrollToOffset(Math.min(this.#viewSize, this.#end), "page");
+        return false;
+      }
+      return true;
+    }
+    if (this.#atEnd) return false;
+    const pages = this.#pages;
+    const page = this.#page + 1;
+    await this.#scrollToPage(page, "page");
+    return page >= pages - 1;
   }
 
   get #atStart(): boolean {

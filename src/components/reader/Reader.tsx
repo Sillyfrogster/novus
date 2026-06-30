@@ -48,7 +48,7 @@ function buildBookCss(s: ReaderSettings): string {
       margin-inline: 0;
       padding-inline-start: 1.15em;
       border-inline-start: 2px solid color-mix(in srgb, ${t.ink} 24%, transparent);
-      color: color-mix(in srgb, ${t.ink} 84%, ${t.bg});
+      color: color-mix(in srgb, ${t.ink} 84%, ${t.bg}) !important;
     }
     blockquote p { text-indent: 0; margin-block: 0.4em; }
     figure { margin-inline: 0; text-align: center; }
@@ -57,23 +57,34 @@ function buildBookCss(s: ReaderSettings): string {
 
   return `
     @namespace epub "http://www.idpf.org/2007/ops";
-    html { color-scheme: ${s.readTheme === "dark" ? "dark" : "light"}; font-size: ${s.fontSize}px; background: ${t.bg}; color: ${t.ink}; }
+    html { color-scheme: ${s.readTheme === "dark" ? "dark" : "light"}; font-size: ${s.fontSize}px; background: ${t.bg} !important; color: ${t.ink} !important; }
     body { background: ${t.bg} !important; color: ${t.ink} !important; }
-    p, li, blockquote, dd {
-      line-height: ${s.lineHeight};
+    body :where(p, li, dd, dt, ol, ul, dl, h1, h2, h3, h4, h5, h6, span, em, strong,
+      b, i, u, s, small, sub, sup, mark, cite, q, abbr, time, address, div, section,
+      article, header, footer, aside, main, nav, table, thead, tbody, tr, td, th,
+      caption, figure, figcaption, hr, label) {
+      color: inherit !important;
+      background-color: transparent !important;
+    }
+    p, li, dd, dt, blockquote, td, th {
+      font-family: ${FONT_STACKS[s.font]} !important;
+      font-size: ${s.fontSize}px !important;
+      line-height: ${s.lineHeight} !important;
       text-align: ${justify ? "justify" : "start"};
-      font-family: ${FONT_STACKS[s.font]};
       -webkit-hyphens: ${justify ? "auto" : "manual"};
       hyphens: ${justify ? "auto" : "manual"};
     }
-    /* Breathing room added on top of the book's own indentation, never replacing it. */
+    caption, figcaption {
+      font-family: ${FONT_STACKS[s.font]} !important;
+      line-height: ${s.lineHeight} !important;
+    }
     p { margin-block: ${s.paragraphSpacing}em; }
     [align="left"] { text-align: left; }
     [align="right"] { text-align: right; }
     [align="center"] { text-align: center; }
     [align="justify"] { text-align: justify; }
     ${embedded}
-    a:link, a:visited { color: ${t.ink}; }
+    a:link, a:visited { color: ${t.ink} !important; }
     pre { white-space: pre-wrap !important; }
   `;
 }
@@ -243,7 +254,6 @@ export function Reader() {
 
   if (!book) return null;
 
-  const isPaged = settings.layout === "paged";
   const pct = Math.round(progress * 100);
 
   const goToToc = (href: string) => {
@@ -287,40 +297,40 @@ export function Reader() {
           aria-hidden="true"
           style={{ opacity: (1 - settings.brightness) * 0.78 }}
         />
-        {isPaged && ready && (
+        {ready && (
           <>
             <button
               type="button"
               aria-label="Previous page"
-              className={`${styles.tapZone} ${styles.tapPrev}`}
+              className={`${styles.navBtn} ${styles.navPrev} ${chromeHidden ? styles.hidden : ""}`}
               onClick={() => viewRef.current?.prev()}
-            />
+            >
+              <ChevronLeft size={22} strokeWidth={1.8} />
+            </button>
             <button
               type="button"
               aria-label="Next page"
-              className={`${styles.tapZone} ${styles.tapNext}`}
+              className={`${styles.navBtn} ${styles.navNext} ${chromeHidden ? styles.hidden : ""}`}
               onClick={() => viewRef.current?.next()}
-            />
+            >
+              <ChevronRight size={22} strokeWidth={1.8} />
+            </button>
           </>
         )}
       </div>
 
       <div className={`${styles.botbar} ${chromeHidden ? styles.hidden : ""}`}>
-        {isPaged && (
-          <button type="button" className={styles.iconBtn} onClick={() => viewRef.current?.prev()} title="Previous">
-            <ChevronLeft size={16} strokeWidth={1.8} />
-          </button>
-        )}
+        <button type="button" className={styles.iconBtn} onClick={() => viewRef.current?.prev()} title="Previous">
+          <ChevronLeft size={16} strokeWidth={1.8} />
+        </button>
         <span className={styles.pageLabel}>{chapter || "Reading"}</span>
         <div className={styles.progressTrack}>
           <div className={styles.progressFill} style={{ width: `${pct}%` }} />
         </div>
         <span className={styles.pct}>{pct}%</span>
-        {isPaged && (
-          <button type="button" className={styles.iconBtn} onClick={() => viewRef.current?.next()} title="Next">
-            <ChevronRight size={16} strokeWidth={1.8} />
-          </button>
-        )}
+        <button type="button" className={styles.iconBtn} onClick={() => viewRef.current?.next()} title="Next">
+          <ChevronRight size={16} strokeWidth={1.8} />
+        </button>
       </div>
 
       {tocOpen && (

@@ -131,22 +131,38 @@
   background: #000;
   z-index: 4;
 }
-.tapZone {
+.navBtn {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 14%;
-  background: none;
-  border: none;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid var(--page-line);
+  background: color-mix(in srgb, var(--page-bg) 70%, transparent);
+  color: var(--page-ink);
+  backdrop-filter: blur(7px);
   z-index: 5;
   cursor: pointer;
-  outline: none;
+  opacity: 0.66;
+  transition: opacity 0.2s ease, background 0.16s ease;
 }
-.tapPrev {
-  left: 0;
+.navBtn:hover {
+  opacity: 1;
+  background: var(--page-bg);
 }
-.tapNext {
-  right: 0;
+.navBtn.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.navPrev {
+  left: 22px;
+}
+.navNext {
+  right: 22px;
 }
 
 .botbar {

@@ -19,6 +19,16 @@ export interface Release {
 /** Newest first. Add a new entry at the top each release. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.2.1",
+    date: "2026-06-30",
+    title: "Reader fixes",
+    notes: [
+      { kind: "fixed", text: "Page turns could dead-end at the end of a chapter instead of moving on. Fixed." },
+      { kind: "fixed", text: "Books could still override your theme, typeface, and font size. They can't anymore." },
+      { kind: "new", text: "Visible page-turn buttons on either side of the page." },
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-06-29",
     title: "Our own renderer",

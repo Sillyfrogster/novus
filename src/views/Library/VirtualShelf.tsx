@@ -1,22 +1,21 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { Book } from "../../lib/types";
-import { spineLook } from "./spineLook";
-import { Spine } from "./Spine";
+import { CARD_H, CARD_W, Spine } from "./Spine";
 import styles from "./Library.module.css";
 
 const GAP = 11;
 const SIDE_PAD = 2;
-const SPINE_MAX_H = 232;
 const LIFT_CLEARANCE = 22;
 const LEDGE_H = 7;
 const LEDGE_UNDER_H = 20;
 const ROW_GAP = 30;
-const ROW_HEIGHT = LIFT_CLEARANCE + SPINE_MAX_H + LEDGE_H + LEDGE_UNDER_H + ROW_GAP;
+const ROW_HEIGHT = LIFT_CLEARANCE + CARD_H + LEDGE_H + LEDGE_UNDER_H + ROW_GAP;
 const OVERSCAN_ROWS = 2;
 
 interface VirtualShelfProps {
   books: Book[];
+  storageRoot: string;
   onOpen: (book: Book, rect: DOMRect) => void;
   onMenu: (book: Book, x: number, y: number) => void;
   onPeek: (book: Book, rect: DOMRect) => void;
@@ -30,14 +29,13 @@ function packRows(books: Book[], avail: number): Book[][] {
   let row: Book[] = [];
   let used = 0;
   for (const book of books) {
-    const w = spineLook(book).width;
-    const needed = row.length === 0 ? w : GAP + w;
+    const needed = row.length === 0 ? CARD_W : GAP + CARD_W;
     if (row.length > 0 && used + needed > avail) {
       rows.push(row);
       row = [];
       used = 0;
     }
-    used += row.length === 0 ? w : GAP + w;
+    used += row.length === 0 ? CARD_W : GAP + CARD_W;
     row.push(book);
   }
   if (row.length > 0) rows.push(row);
@@ -49,6 +47,7 @@ function packRows(books: Book[], avail: number): Book[][] {
  **/
 export function VirtualShelf({
   books,
+  storageRoot,
   onOpen,
   onMenu,
   onPeek,
@@ -108,12 +107,13 @@ export function VirtualShelf({
           >
             <div
               className={styles.vline}
-              style={{ height: LIFT_CLEARANCE + SPINE_MAX_H, paddingTop: LIFT_CLEARANCE }}
+              style={{ height: LIFT_CLEARANCE + CARD_H, paddingTop: LIFT_CLEARANCE }}
             >
               {row.map((book) => (
                 <Spine
                   key={book.id}
                   book={book}
+                  storageRoot={storageRoot}
                   onOpen={onOpen}
                   onMenu={onMenu}
                   onPeek={onPeek}

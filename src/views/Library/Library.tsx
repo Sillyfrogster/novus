@@ -302,6 +302,7 @@ export function Library({ dropping }: LibraryProps) {
                 ) : (
                   <VirtualShelf
                     books={shownBooks}
+                    storageRoot={storageRoot}
                     onOpen={(b, rect) => openDetail(b, rect)}
                     onMenu={(b, x, y) => {
                       endPeek();

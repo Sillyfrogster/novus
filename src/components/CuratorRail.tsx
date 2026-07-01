@@ -15,21 +15,6 @@ interface CuratorRailProps {
   onRead: (book: Book) => void;
 }
 
-function greetingForNow(): string {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
-}
-
-function todayLabel(): string {
-  return new Date().toLocaleDateString(undefined, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
-}
-
 function focusBook(books: Book[]): Book {
   const inProgress = books.filter((b) => b.progress > 0 && b.progress < 1);
   return inProgress[0] ?? books[0];
@@ -121,11 +106,6 @@ export function CuratorRail({ books, storageRoot, onOpen, onRead }: CuratorRailP
   return (
     <>
     <aside className={styles.rail}>
-      <div className={styles.head}>
-        <div className={styles.date}>{todayLabel()}</div>
-        <div className={styles.greeting}>{greetingForNow()}</div>
-      </div>
-
       <div className={styles.section}>
         <div className={styles.label}>{inProgress ? "Now Reading" : "Start Here"}</div>
         <button type="button" className={styles.nowBtn} onClick={() => onOpen(focus)}>

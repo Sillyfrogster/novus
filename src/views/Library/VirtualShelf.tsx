@@ -20,6 +20,7 @@ interface VirtualShelfProps {
   onMenu: (book: Book, x: number, y: number) => void;
   onPeek: (book: Book, rect: DOMRect) => void;
   onPeekEnd: () => void;
+  progressEdge?: boolean;
 }
 
 /** Greedily pack books left-to-right, wrapping to a new shelf when the row is full. */
@@ -52,6 +53,7 @@ export function VirtualShelf({
   onMenu,
   onPeek,
   onPeekEnd,
+  progressEdge = false,
 }: VirtualShelfProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -118,6 +120,7 @@ export function VirtualShelf({
                   onMenu={onMenu}
                   onPeek={onPeek}
                   onPeekEnd={onPeekEnd}
+                  progressEdge={progressEdge}
                 />
               ))}
             </div>

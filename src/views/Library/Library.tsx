@@ -22,6 +22,15 @@ import styles from "./Library.module.css";
 
 /** Cursor must rest on a spine this long before its synopsis surfaces. */
 const PEEK_DELAY_MS = 260;
+const CONTINUE_LIMIT = 8;
+const CONTINUE_OPEN_KEY = "novus.continueShelfOpen";
+
+/**
+ * Prevent staleness
+ */
+function remeasureShelves() {
+  window.dispatchEvent(new Event("resize"));
+}
 
 type SortKey = "recent" | "title" | "author";
 
@@ -79,6 +88,9 @@ export function Library({ dropping }: LibraryProps) {
   const [sort, setSort] = useState<SortKey>("recent");
   const [searchOpen, setSearchOpen] = useState(false);
   const [sortMenu, setSortMenu] = useState(false);
+  const [continueOpen, setContinueOpen] = useState(
+    () => localStorage.getItem(CONTINUE_OPEN_KEY) !== "0",
+  );
   const searchRef = useRef<HTMLInputElement>(null);
   const peekTimer = useRef<number | null>(null);
 
@@ -153,6 +165,26 @@ export function Library({ dropping }: LibraryProps) {
       : collectionBooks;
     return sortBooks(filtered, sort);
   }, [books, activeCollection, q, sort]);
+
+  const continueBooks = useMemo(
+    () =>
+      books
+        .filter((b) => b.progress > 0 && b.progress < 1)
+        .sort(
+          (a, b) => (b.lastReadAt ?? b.addedAt) - (a.lastReadAt ?? a.addedAt),
+        )
+        .slice(0, CONTINUE_LIMIT),
+    [books],
+  );
+
+  const toggleContinue = () => {
+    setContinueOpen((open) => {
+      const next = !open;
+      localStorage.setItem(CONTINUE_OPEN_KEY, next ? "1" : "0");
+      return next;
+    });
+    requestAnimationFrame(remeasureShelves);
+  };
 
   const read = (book: Book, locator?: string) => {
     setSelected(null);
@@ -283,6 +315,57 @@ export function Library({ dropping }: LibraryProps) {
                   </button>
                 </div>
               </div>
+
+              {continueBooks.length > 0 && !q && (
+                <section className={styles.shelf}>
+                  <button
+                    type="button"
+                    className={styles.shelfHeadBtn}
+                    aria-expanded={continueOpen}
+                    aria-controls="continue-shelf"
+                    onClick={toggleContinue}
+                  >
+                    <span className={styles.shelfLabel}>Continue reading</span>
+                    <span className={styles.shelfRule} />
+                    <span className={styles.shelfCount}>
+                      {continueBooks.length}{" "}
+                      {continueBooks.length === 1 ? "VOLUME" : "VOLUMES"}
+                    </span>
+                    <ChevronDown
+                      size={13}
+                      strokeWidth={2.2}
+                      className={`${styles.shelfChev} ${continueOpen ? "" : styles.shelfChevClosed}`}
+                    />
+                  </button>
+                  <div
+                    id="continue-shelf"
+                    inert={!continueOpen}
+                    className={`${styles.fold} ${continueOpen ? "" : styles.foldClosed}`}
+                    onTransitionEnd={(e) => {
+                      if (e.propertyName === "grid-template-rows") {
+                        remeasureShelves();
+                      }
+                    }}
+                  >
+                    <div className={styles.foldInner}>
+                      <div className={styles.foldPad}>
+                        <VirtualShelf
+                          books={continueBooks}
+                          storageRoot={storageRoot}
+                          progressEdge
+                          onOpen={(b, rect) => openDetail(b, rect)}
+                          onMenu={(b, x, y) => {
+                            endPeek();
+                            setMenu({ book: b, x, y });
+                          }}
+                          onPeek={beginPeek}
+                          onPeekEnd={endPeek}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
 
               <div className={styles.shelf}>
                 <div className={styles.shelfHead}>

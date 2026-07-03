@@ -13,10 +13,19 @@ interface SpineProps {
   onMenu: (book: Book, x: number, y: number) => void;
   onPeek: (book: Book, rect: DOMRect) => void;
   onPeekEnd: () => void;
+  progressEdge?: boolean;
 }
 
 /** A single book rendered as a shelved, forward-facing cover card. */
-export function Spine({ book, storageRoot, onOpen, onMenu, onPeek, onPeekEnd }: SpineProps) {
+export function Spine({
+  book,
+  storageRoot,
+  onOpen,
+  onMenu,
+  onPeek,
+  onPeekEnd,
+  progressEdge = false,
+}: SpineProps) {
   const cover = coverUrl(book, storageRoot);
   const look = spineLook(book);
   const inProgress = book.progress > 0 && book.progress < 1;
@@ -35,7 +44,7 @@ export function Spine({ book, storageRoot, onOpen, onMenu, onPeek, onPeekEnd }: 
       onMouseLeave={onPeekEnd}
       title={`${book.title} — ${book.author}`}
     >
-      {inProgress && <span className={styles.ribbon} />}
+      {inProgress && !progressEdge && <span className={styles.ribbon} />}
       <div
         className={styles.cardCover}
         style={
@@ -52,6 +61,14 @@ export function Spine({ book, storageRoot, onOpen, onMenu, onPeek, onPeekEnd }: 
           </div>
         )}
       </div>
+      {progressEdge && (
+        <span className={styles.cardProgress} aria-hidden="true">
+          <span
+            className={styles.cardProgressFill}
+            style={{ width: `${Math.round(book.progress * 100)}%` }}
+          />
+        </span>
+      )}
     </button>
   );
 }

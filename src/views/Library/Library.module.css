@@ -497,6 +497,75 @@
   border-radius: 0 0 2px 2px;
 }
 
+/* continue-reading shelf */
+.shelfHeadBtn {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.shelfHeadBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.shelfChev {
+  align-self: center;
+  color: var(--faint);
+  transition:
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 0.16s ease;
+}
+.shelfHeadBtn:hover .shelfChev {
+  color: var(--muted);
+}
+.shelfChevClosed {
+  transform: rotate(-90deg);
+}
+.fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.foldClosed {
+  grid-template-rows: 0fr;
+}
+.foldInner {
+  min-height: 0;
+  overflow: hidden;
+}
+.foldPad {
+  padding-top: 22px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fold,
+  .shelfChev {
+    transition: none;
+  }
+}
+
+/* bookmark */
+.cardProgress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.cardProgressFill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
 /* preview hover*/
 .preview {
   position: fixed;

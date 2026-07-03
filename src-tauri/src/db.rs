@@ -28,6 +28,7 @@ pub struct Book {
     pub file_size: i64,
     pub added_at: i64,
     pub progress: f64,
+    pub last_read_at: Option<i64>,
 }
 
 /// A book's saved reading position.
@@ -93,6 +94,7 @@ fn book_from_row(r: &rusqlite::Row) -> rusqlite::Result<Book> {
         added_at: r.get(9)?,
         progress: r.get(10)?,
         description: r.get(11)?,
+        last_read_at: r.get(12)?,
     })
 }
 
@@ -199,7 +201,7 @@ impl Db {
         let mut stmt = conn.prepare(
             "SELECT b.id, b.title, b.author, b.format, b.rel_path, b.cover_path,
                     b.page_count, b.language, b.file_size, b.added_at,
-                    COALESCE(rs.progress, 0), b.description
+                    COALESCE(rs.progress, 0), b.description, rs.last_read_at
              FROM books b
              LEFT JOIN reading_state rs ON rs.book_id = b.id
              ORDER BY b.added_at DESC",
@@ -242,7 +244,7 @@ impl Db {
             .query_row(
                 "SELECT b.id, b.title, b.author, b.format, b.rel_path, b.cover_path,
                         b.page_count, b.language, b.file_size, b.added_at,
-                        COALESCE(rs.progress, 0), b.description
+                        COALESCE(rs.progress, 0), b.description, rs.last_read_at
                  FROM books b
                  LEFT JOIN reading_state rs ON rs.book_id = b.id
                  WHERE b.id = ?1",

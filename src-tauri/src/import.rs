@@ -95,6 +95,7 @@ fn import_one(novus: &Novus, path: &str) -> AppResult<Option<Book>> {
         file_size: bytes.len() as i64,
         added_at: now_seconds(),
         progress: 0.0,
+        last_read_at: None,
     };
     novus.db.insert_book(&book)?;
     Ok(Some(book))

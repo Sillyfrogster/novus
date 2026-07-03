@@ -12,6 +12,7 @@ export interface Book {
   fileSize: number;
   addedAt: number;
   progress: number;
+  lastReadAt: number | null;
 }
 
 /** One entry in a book's table of contents, flattened with a nesting depth. */

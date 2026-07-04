@@ -215,8 +215,8 @@ export function Library({ dropping }: LibraryProps) {
           <CuratorRail
             books={books}
             storageRoot={storageRoot}
-            onOpen={(b) => openDetail(b, null)}
             onRead={read}
+            onSearch={openSearch}
           />
           <div className={styles.shelves} data-scroller>
             <div className={styles.shelvesInner}>

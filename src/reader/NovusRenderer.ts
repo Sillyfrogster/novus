@@ -4,18 +4,32 @@
 import { getVisibleRange, uncollapse, type RectMapper } from "./geometry";
 import { unwrapHighlightMarks, wrapRangeInMarks } from "./highlightMarks";
 import type {
-  EpubBook,
-  EpubSection,
+  BookModel,
+  BookSection,
   Flow,
   LoadDetail,
   ReaderSurface,
   RelocateDetail,
+  RelocateReason,
   RenderHighlight,
   SelectionDetail,
   TocItem,
 } from "./types";
 
-type ScrollReason = "anchor" | "navigation" | "page" | "scroll" | "resize";
+type ScrollReason = "anchor" | "navigation" | "turn" | "page" | "scroll" | "resize";
+
+/** Public reason reported on relocate. "turn" crosses a section boundary but is still a page turn. */
+const RELOCATE_REASON: Record<ScrollReason, RelocateReason> = {
+  page: "page",
+  turn: "page",
+  scroll: "scroll",
+  navigation: "jump",
+  anchor: "jump",
+  resize: "layout",
+};
+
+/** Settle delay before a user scroll in scrolled flow is reported as a relocate. */
+const SCROLL_SETTLE_MS = 150;
 
 /** Treat our own highlight marks as transparent to CFI computation */
 const cfiFilter = (node: Node): number =>
@@ -86,8 +100,8 @@ export class NovusRenderer implements ReaderSurface {
   #iframe!: HTMLIFrameElement;
   #contentRange = document.createRange();
 
-  #book: EpubBook | null = null;
-  #sections: EpubSection[] = [];
+  #book: BookModel | null = null;
+  #sections: BookSection[] = [];
   #sectionProgress: import("../../vendor/foliate-js/progress.js").SectionProgress | null = null;
   #tocProgress: import("../../vendor/foliate-js/progress.js").TOCProgress | null = null;
   #cfi: typeof import("../../vendor/foliate-js/epubcfi.js") | null = null;
@@ -104,6 +118,8 @@ export class NovusRenderer implements ReaderSurface {
   #locked = false;
 
   #observer: ResizeObserver;
+  #scrollTimer: ReturnType<typeof setTimeout> | null = null;
+  #suppressScroll = false;
   #relocateCb: ((d: RelocateDetail) => void) | null = null;
   #loadCb: ((d: LoadDetail) => void) | null = null;
   #selectionCb: ((d: SelectionDetail | null) => void) | null = null;
@@ -129,10 +145,24 @@ export class NovusRenderer implements ReaderSurface {
 
     this.#observer = new ResizeObserver(() => this.#render("resize"));
     this.#observer.observe(this.#container);
+
+    // Wheel/trackpad scrolling in scrolled flow never passes through our
+    // scroll helpers, so listen on the container and report it once settled.
+    this.#container.addEventListener("scroll", () => this.#onUserScroll(), { passive: true });
+  }
+
+  #onUserScroll(): void {
+    if (this.#flow !== "scrolled" || this.#suppressScroll) return;
+    if (this.#scrollTimer) clearTimeout(this.#scrollTimer);
+    this.#scrollTimer = setTimeout(() => this.#afterScroll("scroll"), SCROLL_SETTLE_MS);
   }
 
   get toc(): TocItem[] {
     return this.#toc;
+  }
+
+  get book(): BookModel | null {
+    return this.#book;
   }
 
   on(type: "relocate", cb: (d: RelocateDetail) => void): void;
@@ -145,18 +175,19 @@ export class NovusRenderer implements ReaderSurface {
   }
 
   async open(file: File): Promise<void> {
-    const [{ openBook }, { SectionProgress, TOCProgress }, CFI] = await Promise.all([
-      import("./openBook"),
-      import("../../vendor/foliate-js/progress.js"),
-      import("../../vendor/foliate-js/epubcfi.js"),
-    ]);
+    const { openBook } = await import("./openBook");
     const book = await openBook(file);
     this.#book = book;
     this.#sections = book.sections;
-    this.#cfi = CFI as typeof import("../../vendor/foliate-js/epubcfi.js");
     this.#toc = book.toc ?? [];
 
-    const ids = book.sections.map((s) => s.id);
+    const [{ SectionProgress, TOCProgress }, CFI] = await Promise.all([
+      import("../../vendor/foliate-js/progress.js"),
+      import("../../vendor/foliate-js/epubcfi.js"),
+    ]);
+    this.#cfi = CFI as typeof import("../../vendor/foliate-js/epubcfi.js");
+
+    const ids = book.sections.map((s) => String(s.id));
     this.#sectionProgress = new SectionProgress(book.sections, 1500, 1600);
     const splitHref = book.splitTOCHref.bind(book);
     const getFragment = book.getTOCFragment.bind(book);
@@ -166,18 +197,31 @@ export class NovusRenderer implements ReaderSurface {
 
   // nav
 
-  #resolve(target: string): { index: number; anchor?: (doc: Document) => Range | Node } | null {
+  /** Resolve a CFI locator synchronously (highlights depend on this being sync). */
+  #resolveCfi(cfi: string): { index: number; anchor?: (doc: Document) => Range | Node } | null {
     const book = this.#book;
     const CFI = this.#cfi;
     if (!book || !CFI) return null;
     try {
-      if (CFI.isCFI.test(target)) {
-        if (book.resolveCFI) return book.resolveCFI(target);
-        const parts = CFI.parse(target);
-        const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
-        return { index, anchor: (doc: Document) => CFI.toRange(doc, parts) };
-      }
-      return book.resolveHref(target);
+      if (book.resolveCFI) return book.resolveCFI(cfi);
+      const parts = CFI.parse(cfi);
+      const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
+      return { index, anchor: (doc: Document) => CFI.toRange(doc, parts) };
+    } catch (e) {
+      console.warn(`NovusRenderer: could not resolve ${cfi}`, e);
+      return null;
+    }
+  }
+
+  /** Resolve any locator: a CFI or an href. */
+  async #resolve(
+    target: string,
+  ): Promise<{ index: number; anchor?: (doc: Document) => Range | Node } | null> {
+    const book = this.#book;
+    if (!book) return null;
+    if (this.#cfi?.isCFI.test(target)) return this.#resolveCfi(target);
+    try {
+      return await book.resolveHref(target);
     } catch (e) {
       console.warn(`NovusRenderer: could not resolve ${target}`, e);
       return null;
@@ -185,7 +229,7 @@ export class NovusRenderer implements ReaderSurface {
   }
 
   async goTo(target: string): Promise<boolean> {
-    const resolved = this.#resolve(target);
+    const resolved = await this.#resolve(target);
     if (!resolved || !this.#canGoToIndex(resolved.index)) return false;
     await this.#display(resolved.index, resolved.anchor ?? 0, "navigation");
     return true;
@@ -208,7 +252,7 @@ export class NovusRenderer implements ReaderSurface {
     if (flow === this.#flow) return;
     this.#flow = flow;
     this.#container.style.overflow = flow === "scrolled" ? "auto" : "hidden";
-    if (this.#iframe?.contentDocument) this.#render("navigation");
+    if (this.#iframe?.contentDocument) this.#render("resize");
   }
 
   /** Set the target column / content width */
@@ -263,7 +307,9 @@ export class NovusRenderer implements ReaderSurface {
 
   destroy(): void {
     this.#observer.disconnect();
+    if (this.#scrollTimer) clearTimeout(this.#scrollTimer);
     this.#sections[this.#index]?.unload?.();
+    this.#book?.destroy?.();
     this.#container.remove();
     this.#book = null;
     this.#relocateCb = null;
@@ -294,16 +340,17 @@ export class NovusRenderer implements ReaderSurface {
     }
     const section = this.#sections[index];
     if (!section) return;
-    let src: string;
+    let source: string;
     try {
-      src = (await section.load()) as string;
+      source = await section.load();
     } catch (e) {
       console.warn(`NovusRenderer: failed to load section ${index}`, e);
       return;
     }
     const oldIndex = this.#index;
     this.#index = index;
-    await this.#mountSection(src);
+
+    await this.#mountSection(source);
     this.#sections[oldIndex]?.unload?.();
 
     const doc = this.#iframe.contentDocument!;
@@ -400,7 +447,7 @@ export class NovusRenderer implements ReaderSurface {
     const resolved: { h: RenderHighlight; range: Range }[] = [];
     for (const h of here) {
       try {
-        const r = this.#resolve(h.cfi);
+        const r = this.#resolveCfi(h.cfi);
         if (!r || r.index !== this.#index || !r.anchor) continue;
         const range = r.anchor(doc) as Range;
         if (range && range.collapsed === false) resolved.push({ h, range });
@@ -599,13 +646,23 @@ export class NovusRenderer implements ReaderSurface {
 
   async #scrollToPage(page: number, reason: ScrollReason): Promise<void> {
     const offset = this.#containerSize * (this.#rtl ? -page : page);
-    this.#container[this.#scrollProp] = offset;
+    this.#setScrollPosition(offset);
     this.#afterScroll(reason);
   }
 
   async #scrollToOffset(offset: number, reason: ScrollReason): Promise<void> {
-    this.#container[this.#scrollProp] = offset;
+    this.#setScrollPosition(offset);
     this.#afterScroll(reason);
+  }
+
+  /** Programmatic scrolls fire the container's scroll event too; keep them out of #onUserScroll. */
+  #setScrollPosition(offset: number): void {
+    this.#suppressScroll = true;
+    if (this.#scrollTimer) clearTimeout(this.#scrollTimer);
+    this.#container[this.#scrollProp] = offset;
+    setTimeout(() => {
+      this.#suppressScroll = false;
+    }, SCROLL_SETTLE_MS);
   }
 
   async #scrollToAnchor(anchor: number | Range | Node, reason: ScrollReason): Promise<void> {
@@ -639,7 +696,8 @@ export class NovusRenderer implements ReaderSurface {
   #afterScroll(reason: ScrollReason): void {
     try {
       const range = this.#getVisibleRange();
-      if (reason !== "navigation" && reason !== "anchor" && reason !== "resize") this.#anchor = range;
+      if (reason !== "navigation" && reason !== "anchor" && reason !== "turn" && reason !== "resize")
+        this.#anchor = range;
 
       let fractionInSection: number;
       let pageFraction = 0;
@@ -665,6 +723,7 @@ export class NovusRenderer implements ReaderSurface {
         cfi,
         tocItem,
         location: loc ? { current: loc.current, total: loc.total } : null,
+        reason: RELOCATE_REASON[reason],
       });
     } catch (e) {
       console.warn("NovusRenderer: relocate reporting failed", e);
@@ -694,7 +753,7 @@ export class NovusRenderer implements ReaderSurface {
       const crossSection = prev ? await this.#scrollPrev() : await this.#scrollNext();
       if (crossSection) {
         const index = this.#adjacentIndex(dir);
-        if (index != null) await this.#display(index, prev ? 1 : 0, "navigation");
+        if (index != null) await this.#display(index, prev ? 1 : 0, "turn");
       }
     } finally {
       this.#locked = false;

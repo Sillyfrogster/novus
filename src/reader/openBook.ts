@@ -1,8 +1,9 @@
 /**
- * Open an EPUB file into the parsed book model.
+ * Open a book file into the parsed book model. EPUB goes through foliate's
+ * parser (a dynamic import, so the parser only loads when needed).
  */
 import type { ZipEntry } from "../../vendor/foliate-js/vendor/zip.js";
-import type { EpubBook } from "./types";
+import type { BookModel } from "./types";
 
 interface ZipLoader {
   entries: ZipEntry[];
@@ -27,12 +28,13 @@ async function makeZipLoader(file: Blob): Promise<ZipLoader> {
   return { entries, loadText, loadBlob, getSize };
 }
 
-export async function openBook(file: File): Promise<EpubBook> {
+export async function openBook(file: File): Promise<BookModel> {
   if (!file.size) throw new Error("File not found");
+
   const [loader, { EPUB }] = await Promise.all([
     makeZipLoader(file),
     import("../../vendor/foliate-js/epub.js"),
   ]);
   const book = await new EPUB(loader).init();
-  return book as EpubBook;
+  return book as BookModel;
 }

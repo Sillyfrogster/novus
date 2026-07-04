@@ -66,13 +66,55 @@ pub struct Highlight {
     pub created_at: i64,
 }
 
-/// Aggregate reading activity for the trailing seven days.
+/// One local calendar day of reading activity.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WeekStats {
+pub struct DailyActivity {
+    /// Local date, `YYYY-MM-DD`.
+    pub day: String,
+    pub active_seconds: i64,
+    pub pages_read: i64,
+    pub sessions: i64,
+}
+
+/// Total time a book has actually been read.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BookTime {
+    pub book_id: String,
+    pub title: String,
+    pub author: String,
+    pub active_seconds: i64,
+    pub pages_read: i64,
+}
+
+/// Personal-pace estimate of the reading time left in an in-progress book.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinishEstimate {
+    pub book_id: String,
+    pub title: String,
+    pub progress: f64,
+    pub seconds_left: i64,
+}
+
+/// Everything the insights page renders, computed in one pass.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightsData {
+    pub finished_count: i64,
+    pub reading_count: i64,
+    pub unread_count: i64,
     pub streak_days: i64,
-    pub seconds: i64,
-    pub pages: i64,
+    pub active_seconds_30d: i64,
+    pub pages_read_30d: i64,
+    pub session_count_30d: i64,
+    pub avg_session_seconds_30d: i64,
+    pub median_page_seconds: i64,
+    pub pages_per_hour: f64,
+    pub daily: Vec<DailyActivity>,
+    pub book_times: Vec<BookTime>,
+    pub finish_estimates: Vec<FinishEstimate>,
 }
 
 /// SQLite-backed library store.
@@ -189,6 +231,20 @@ impl Db {
                  CREATE INDEX idx_highlights_book
                     ON highlights(book_id, section_index, location);
                  PRAGMA user_version = 4;",
+            )?;
+        }
+
+        if version < 5 {
+            conn.execute_batch(
+                "ALTER TABLE reading_sessions ADD COLUMN uuid TEXT;
+                 ALTER TABLE reading_sessions ADD COLUMN active_seconds INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE reading_sessions ADD COLUMN pages_read INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE reading_sessions ADD COLUMN median_page_ms INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE reading_sessions ADD COLUMN start_fraction REAL NOT NULL DEFAULT 0;
+                 ALTER TABLE reading_sessions ADD COLUMN end_fraction REAL NOT NULL DEFAULT 0;
+                 CREATE UNIQUE INDEX idx_sessions_uuid ON reading_sessions(uuid);
+                 CREATE INDEX idx_sessions_book ON reading_sessions(book_id);
+                 PRAGMA user_version = 5;",
             )?;
         }
 
@@ -353,63 +409,224 @@ impl Db {
 
     // sessions
 
-    pub fn log_session(
+    /// Upsert one reading session, keyed on a client-generated uuid
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_session(
         &self,
+        uuid: &str,
         book_id: &str,
         started_at: i64,
         ended_at: i64,
-        pages: i64,
+        active_seconds: i64,
+        pages_read: i64,
+        median_page_ms: i64,
+        start_fraction: f64,
+        end_fraction: f64,
     ) -> AppResult<()> {
         let seconds = (ended_at - started_at).max(0);
         let conn = self.conn.lock().expect("db mutex poisoned");
         conn.execute(
-            "INSERT INTO reading_sessions (book_id, started_at, ended_at, seconds, pages)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![book_id, started_at, ended_at, seconds, pages],
+            "INSERT INTO reading_sessions
+                (uuid, book_id, started_at, ended_at, seconds, pages,
+                 active_seconds, pages_read, median_page_ms, start_fraction, end_fraction)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?6, ?8, ?9, ?10)
+             ON CONFLICT(uuid) DO UPDATE SET
+                ended_at = excluded.ended_at,
+                seconds = excluded.seconds,
+                pages = excluded.pages,
+                active_seconds = excluded.active_seconds,
+                pages_read = excluded.pages_read,
+                median_page_ms = excluded.median_page_ms,
+                end_fraction = excluded.end_fraction",
+            rusqlite::params![
+                uuid,
+                book_id,
+                started_at,
+                ended_at,
+                seconds,
+                pages_read,
+                active_seconds,
+                median_page_ms,
+                start_fraction,
+                end_fraction
+            ],
         )?;
         Ok(())
     }
 
-    pub fn week_stats(&self) -> AppResult<WeekStats> {
-        let now = now_seconds();
-        let week_ago = now - 7 * 86_400;
+    /// Everything the insights page shows.
+    pub fn insights_data(&self) -> AppResult<InsightsData> {
+        const MIN_RATE_SIGNAL_S: i64 = 600;
+        const MIN_RATE_DELTA: f64 = 0.005;
+
         let conn = self.conn.lock().expect("db mutex poisoned");
+        let month_ago = now_seconds() - 30 * 86_400;
 
-        let (seconds, pages): (i64, i64) = conn.query_row(
-            "SELECT COALESCE(SUM(seconds), 0), COALESCE(SUM(pages), 0)
-             FROM reading_sessions WHERE started_at >= ?1",
-            [week_ago],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+        let (finished_count, reading_count, unread_count): (i64, i64, i64) = conn.query_row(
+            "SELECT
+                COALESCE(SUM(CASE WHEN COALESCE(rs.progress, 0) >= 1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN COALESCE(rs.progress, 0) > 0
+                              AND COALESCE(rs.progress, 0) < 1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN COALESCE(rs.progress, 0) = 0 THEN 1 ELSE 0 END), 0)
+             FROM books b LEFT JOIN reading_state rs ON rs.book_id = b.id",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
 
-        let mut stmt = conn.prepare(
-            "SELECT DISTINCT started_at / 86400 AS day FROM reading_sessions ORDER BY day DESC",
+        let streak_days: i64 = conn.query_row(
+            "WITH RECURSIVE days(day) AS (
+                SELECT DISTINCT date(started_at, 'unixepoch', 'localtime') FROM reading_sessions
+             ),
+             run(day) AS (
+                SELECT CASE
+                    WHEN date('now', 'localtime') IN (SELECT day FROM days)
+                        THEN date('now', 'localtime')
+                    WHEN date('now', 'localtime', '-1 day') IN (SELECT day FROM days)
+                        THEN date('now', 'localtime', '-1 day')
+                END
+                UNION ALL
+                SELECT date(day, '-1 day') FROM run
+                WHERE date(day, '-1 day') IN (SELECT day FROM days)
+             )
+             SELECT COUNT(*) FROM run WHERE day IS NOT NULL",
+            [],
+            |r| r.get(0),
         )?;
-        let days = stmt
-            .query_map([], |r| r.get::<_, i64>(0))?
+
+        let (active_seconds_30d, pages_read_30d, session_count_30d): (i64, i64, i64) = conn
+            .query_row(
+                "SELECT
+                    COALESCE(SUM(CASE WHEN uuid IS NOT NULL THEN active_seconds ELSE seconds END), 0),
+                    COALESCE(SUM(CASE WHEN uuid IS NOT NULL THEN pages_read ELSE pages END), 0),
+                    COUNT(*)
+                 FROM reading_sessions WHERE started_at >= ?1",
+                [month_ago],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )?;
+        let avg_session_seconds_30d = if session_count_30d > 0 {
+            active_seconds_30d / session_count_30d
+        } else {
+            0
+        };
+
+        let median_page_seconds: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(median_page_ms * pages_read) / NULLIF(SUM(pages_read), 0), 0) / 1000
+             FROM reading_sessions
+             WHERE uuid IS NOT NULL AND pages_read > 0 AND started_at >= ?1",
+            [month_ago],
+            |r| r.get(0),
+        )?;
+
+        let pages_per_hour = if active_seconds_30d > 0 {
+            pages_read_30d as f64 * 3600.0 / active_seconds_30d as f64
+        } else {
+            0.0
+        };
+
+        let mut daily_stmt = conn.prepare(
+            "SELECT date(started_at, 'unixepoch', 'localtime') AS day,
+                    SUM(CASE WHEN uuid IS NOT NULL THEN active_seconds ELSE seconds END),
+                    SUM(CASE WHEN uuid IS NOT NULL THEN pages_read ELSE pages END),
+                    COUNT(*)
+             FROM reading_sessions WHERE started_at >= ?1
+             GROUP BY day ORDER BY day ASC",
+        )?;
+        let daily = daily_stmt
+            .query_map([month_ago], |r| {
+                Ok(DailyActivity {
+                    day: r.get(0)?,
+                    active_seconds: r.get(1)?,
+                    pages_read: r.get(2)?,
+                    sessions: r.get(3)?,
+                })
+            })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        let today = now / 86_400;
-        let mut streak = 0;
-        let mut expected = today;
-        for day in days {
-            if day == expected {
-                streak += 1;
-                expected -= 1;
-            } else if day < expected {
-                if streak == 0 && day == today - 1 {
-                    streak += 1;
-                    expected = day - 1;
-                } else {
-                    break;
-                }
-            }
-        }
+        let mut times_stmt = conn.prepare(
+            "SELECT s.book_id, b.title, b.author,
+                    SUM(CASE WHEN s.uuid IS NOT NULL THEN s.active_seconds ELSE s.seconds END) AS t,
+                    SUM(CASE WHEN s.uuid IS NOT NULL THEN s.pages_read ELSE s.pages END)
+             FROM reading_sessions s JOIN books b ON b.id = s.book_id
+             GROUP BY s.book_id ORDER BY t DESC LIMIT 8",
+        )?;
+        let book_times = times_stmt
+            .query_map([], |r| {
+                Ok(BookTime {
+                    book_id: r.get(0)?,
+                    title: r.get(1)?,
+                    author: r.get(2)?,
+                    active_seconds: r.get(3)?,
+                    pages_read: r.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(WeekStats {
-            streak_days: streak,
-            seconds,
-            pages,
+        let (global_delta, global_active): (f64, i64) = conn.query_row(
+            "SELECT COALESCE(SUM(MAX(end_fraction - start_fraction, 0)), 0),
+                    COALESCE(SUM(active_seconds), 0)
+             FROM reading_sessions WHERE uuid IS NOT NULL",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let global_rate = if global_active > 0 {
+            global_delta / global_active as f64
+        } else {
+            0.0
+        };
+
+        let mut est_stmt = conn.prepare(
+            "SELECT b.id, b.title, rs.progress,
+                    COALESCE(SUM(MAX(s.end_fraction - s.start_fraction, 0)), 0),
+                    COALESCE(SUM(s.active_seconds), 0)
+             FROM books b
+             JOIN reading_state rs ON rs.book_id = b.id
+                AND rs.progress > 0 AND rs.progress < 1
+             LEFT JOIN reading_sessions s ON s.book_id = b.id AND s.uuid IS NOT NULL
+             GROUP BY b.id ORDER BY rs.last_read_at DESC",
+        )?;
+        let finish_estimates = est_stmt
+            .query_map([], |r| {
+                let book_id: String = r.get(0)?;
+                let title: String = r.get(1)?;
+                let progress: f64 = r.get(2)?;
+                let delta: f64 = r.get(3)?;
+                let active: i64 = r.get(4)?;
+                Ok((book_id, title, progress, delta, active))
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter_map(|(book_id, title, progress, delta, active)| {
+                let rate = if active >= MIN_RATE_SIGNAL_S && delta >= MIN_RATE_DELTA {
+                    delta / active as f64
+                } else {
+                    global_rate
+                };
+                if rate <= 0.0 {
+                    return None;
+                }
+                Some(FinishEstimate {
+                    book_id,
+                    title,
+                    progress,
+                    seconds_left: ((1.0 - progress) / rate) as i64,
+                })
+            })
+            .collect();
+
+        Ok(InsightsData {
+            finished_count,
+            reading_count,
+            unread_count,
+            streak_days,
+            active_seconds_30d,
+            pages_read_30d,
+            session_count_30d,
+            avg_session_seconds_30d,
+            median_page_seconds,
+            pages_per_hour,
+            daily,
+            book_times,
+            finish_estimates,
         })
     }
 

@@ -5,15 +5,15 @@ import {
   createCollection,
   deleteCollection,
   importBooks,
+  insightsData,
   listBooks,
   listCollections,
   removeBook,
   saveReadingState,
   setCollectionMembership,
   storageRoot,
-  weekStats,
 } from "../lib/ipc";
-import type { AppTheme, Book, Collection, View, WeekStats } from "../lib/types";
+import type { AppTheme, Book, Collection, InsightsData, View } from "../lib/types";
 
 const THEME_KEY = "novus.appTheme";
 const PROFILE_KEY = "novus.profileName";
@@ -37,7 +37,8 @@ interface LibraryState {
   books: Book[];
   collections: Collection[];
   selectedCollectionId: number | null;
-  stats: WeekStats | null;
+  insights: InsightsData | null;
+  insightsLoading: boolean;
   profileName: string;
   storageRoot: string;
   loading: boolean;
@@ -50,6 +51,7 @@ interface LibraryState {
   openReader: (id: string, locator?: string | null) => void;
   consumePendingLocator: () => string | null;
   goLibrary: () => void;
+  openInsights: () => Promise<void>;
   loadLibrary: () => Promise<void>;
   pickAndImport: () => Promise<void>;
   importPaths: (paths: string[]) => Promise<void>;
@@ -74,7 +76,8 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   books: [],
   collections: [],
   selectedCollectionId: null,
-  stats: null,
+  insights: null,
+  insightsLoading: false,
   profileName: initialProfileName(),
   storageRoot: "",
   loading: true,
@@ -108,21 +111,30 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     get().loadLibrary();
   },
 
+  openInsights: async () => {
+    set({ view: "insights", insightsLoading: true });
+    try {
+      const insights = await insightsData();
+      set({ insights, insightsLoading: false });
+    } catch (e) {
+      set({ error: messageOf(e), insightsLoading: false, view: "library" });
+    }
+  },
+
   loadLibrary: async () => {
     set({ loading: true, error: null });
     try {
-      const [books, root, collections, stats] = await Promise.all([
+      const [books, root, collections] = await Promise.all([
         listBooks(),
         get().storageRoot ? Promise.resolve(get().storageRoot) : storageRoot(),
         listCollections(),
-        weekStats(),
       ]);
       const selectedCollectionId = collections.some(
         (c) => c.id === get().selectedCollectionId,
       )
         ? get().selectedCollectionId
         : null;
-      set({ books, storageRoot: root, collections, stats, selectedCollectionId, loading: false });
+      set({ books, storageRoot: root, collections, selectedCollectionId, loading: false });
     } catch (e) {
       set({ error: messageOf(e), loading: false });
     }

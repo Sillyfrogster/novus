@@ -11,6 +11,7 @@ import { useZoomGuard } from "./lib/useZoomGuard";
 import { appVersion } from "./lib/version";
 import { useLibrary } from "./store/library";
 import { useUpdate } from "./store/update";
+import { Insights } from "./views/Insights/Insights";
 import { Library } from "./views/Library/Library";
 import styles from "./App.module.css";
 
@@ -61,8 +62,8 @@ export default function App() {
         setDropping(true);
       } else if (payload.type === "drop") {
         setDropping(false);
-        const epubs = payload.paths.filter((p) => p.toLowerCase().endsWith(".epub"));
-        if (epubs.length > 0) importPaths(epubs);
+        const books = payload.paths.filter((p) => /\.epub$/i.test(p));
+        if (books.length > 0) importPaths(books);
       } else {
         setDropping(false);
       }
@@ -77,7 +78,13 @@ export default function App() {
       <div className="nv-grain" aria-hidden="true" />
       <TitleBar />
       <div className={styles.body}>
-        {view === "reader" ? <Reader /> : <Library dropping={dropping} />}
+        {view === "reader" ? (
+          <Reader />
+        ) : view === "insights" ? (
+          <Insights />
+        ) : (
+          <Library dropping={dropping} />
+        )}
       </div>
       <UpdateBanner />
       {aboutOpen && <AboutPanel />}

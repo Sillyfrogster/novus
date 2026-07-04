@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 
 use tauri::State;
 
-use crate::db::{now_seconds, Book, Collection, Highlight, ReadingState, WeekStats};
+use crate::db::{now_seconds, Book, Collection, Highlight, InsightsData, ReadingState};
 use crate::error::AppResult;
 use crate::import::{import_paths, read_epub_toc, ImportSummary, TocEntry};
 use crate::{Novus, ZoomGuard};
@@ -88,20 +88,38 @@ pub fn set_collection_membership(
 
 // Reading sessions
 
+/// Upsert a reading session (uuid-keyed; the reader flushes periodically).
 #[tauri::command]
-pub fn log_session(
+#[allow(clippy::too_many_arguments)]
+pub fn record_session(
     state: State<'_, Novus>,
+    uuid: String,
     book_id: String,
     started_at: i64,
     ended_at: i64,
-    pages: i64,
+    active_seconds: i64,
+    pages_read: i64,
+    median_page_ms: i64,
+    start_fraction: f64,
+    end_fraction: f64,
 ) -> AppResult<()> {
-    state.db.log_session(&book_id, started_at, ended_at, pages)
+    state.db.record_session(
+        &uuid,
+        &book_id,
+        started_at,
+        ended_at,
+        active_seconds,
+        pages_read,
+        median_page_ms,
+        start_fraction,
+        end_fraction,
+    )
 }
 
+/// Everything the insights page renders.
 #[tauri::command]
-pub fn week_stats(state: State<'_, Novus>) -> AppResult<WeekStats> {
-    state.db.week_stats()
+pub fn insights_data(state: State<'_, Novus>) -> AppResult<InsightsData> {
+    state.db.insights_data()
 }
 
 /// Lock or unlock page zoom. The reader unlocks it; everywhere else stays locked

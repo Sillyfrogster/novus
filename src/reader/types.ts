@@ -8,11 +8,14 @@ export interface TocItem {
   subitems?: TocItem[];
 }
 
+export type RelocateReason = "page" | "scroll" | "jump" | "layout";
+
 export interface RelocateDetail {
   fraction: number;
   cfi: string | null;
   tocItem?: { label?: string } | null;
   location?: { current: number; total: number } | null;
+  reason: RelocateReason;
 }
 
 export interface LoadDetail {
@@ -57,27 +60,43 @@ export interface ReaderSurface {
   on(type: "selection", cb: (detail: SelectionDetail | null) => void): void;
 }
 
-export interface EpubSection {
-  id: string;
+export type SectionSource = string;
+
+export interface BookSection {
+  id: string | number;
   linear?: string;
   size: number;
   cfi?: string;
-  load(): Promise<string> | string;
+  load(): Promise<SectionSource> | SectionSource;
   unload?(): void;
-  createDocument(): Promise<Document>;
+  createDocument?(): Promise<Document>;
   resolveHref?(href: string): string;
 }
 
-export interface EpubBook {
-  sections: EpubSection[];
+/** A resolved in-book target. */
+export interface ResolvedTarget {
+  index: number;
+  anchor?: (doc: Document) => Range | Node;
+}
+
+export interface BookModel {
+  sections: BookSection[];
   toc?: TocItem[];
   pageList?: TocItem[];
-  metadata?: { language?: string | string[] };
+  metadata?: {
+    language?: string | string[];
+    title?: unknown;
+    author?: unknown;
+    description?: unknown;
+  };
   dir?: string;
-  rendition?: { layout?: string };
-  resolveCFI?(cfi: string): { index: number; anchor: (doc: Document) => Range | Node };
-  resolveHref(href: string): { index: number; anchor: (doc: Document) => Range | Node };
-  splitTOCHref(href: string | undefined): Promise<[string, string | null]> | [string, string | null];
+  resolveCFI?(cfi: string): ResolvedTarget & { anchor: (doc: Document) => Range | Node };
+  resolveHref(href: string): ResolvedTarget | Promise<ResolvedTarget>;
+  splitTOCHref(
+    href: string | undefined,
+  ): Promise<[string, string | null]> | [string, string | null];
   getTOCFragment(doc: Document, id: string | null): Node | null;
   isExternal?(uri: string): boolean;
+  getCover?(): Promise<Blob | null>;
+  destroy?(): void;
 }

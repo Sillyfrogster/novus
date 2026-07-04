@@ -5,9 +5,9 @@ import type {
   Collection,
   Highlight,
   HighlightColorKey,
+  InsightsData,
   ReadingState,
   TocEntry,
-  WeekStats,
 } from "./types";
 
 /** Typed wrappers over the Rust command surface. */
@@ -75,17 +75,24 @@ export function setCollectionMembership(
   return invoke<void>("set_collection_membership", { collectionId, bookId, member });
 }
 
-export function logSession(
-  bookId: string,
-  startedAt: number,
-  endedAt: number,
-  pages: number,
-): Promise<void> {
-  return invoke<void>("log_session", { bookId, startedAt, endedAt, pages });
+export interface SessionRecord {
+  uuid: string;
+  bookId: string;
+  startedAt: number;
+  endedAt: number;
+  activeSeconds: number;
+  pagesRead: number;
+  medianPageMs: number;
+  startFraction: number;
+  endFraction: number;
 }
 
-export function weekStats(): Promise<WeekStats> {
-  return invoke<WeekStats>("week_stats");
+export function recordSession(session: SessionRecord): Promise<void> {
+  return invoke<void>("record_session", { ...session });
+}
+
+export function insightsData(): Promise<InsightsData> {
+  return invoke<InsightsData>("insights_data");
 }
 
 // highlights

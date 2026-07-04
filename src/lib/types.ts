@@ -52,10 +52,46 @@ export interface Highlight {
   createdAt: number;
 }
 
-export interface WeekStats {
+/** One local calendar day of reading activity. */
+export interface DailyActivity {
+  day: string;
+  activeSeconds: number;
+  pagesRead: number;
+  sessions: number;
+}
+
+/** Total time a book has actually been read. */
+export interface BookTime {
+  bookId: string;
+  title: string;
+  author: string;
+  activeSeconds: number;
+  pagesRead: number;
+}
+
+/** Personal-pace estimate of the reading time left in an in-progress book. */
+export interface FinishEstimate {
+  bookId: string;
+  title: string;
+  progress: number;
+  secondsLeft: number;
+}
+
+/** Everything the insights page renders. */
+export interface InsightsData {
+  finishedCount: number;
+  readingCount: number;
+  unreadCount: number;
   streakDays: number;
-  seconds: number;
-  pages: number;
+  activeSeconds30d: number;
+  pagesRead30d: number;
+  sessionCount30d: number;
+  avgSessionSeconds30d: number;
+  medianPageSeconds: number;
+  pagesPerHour: number;
+  daily: DailyActivity[];
+  bookTimes: BookTime[];
+  finishEstimates: FinishEstimate[];
 }
 
 export type AppTheme = "light" | "dark";
@@ -63,4 +99,4 @@ export type ReadTheme = "light" | "sepia" | "dark";
 export type ReadFont = "serif" | "sans" | "modern";
 export type ReadLayout = "paged" | "scroll";
 export type TextAlign = "left" | "justify";
-export type View = "library" | "reader";
+export type View = "library" | "reader" | "insights";

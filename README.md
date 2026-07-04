@@ -22,13 +22,13 @@ Download the latest build for your platform from the [Releases page](https://git
 
 ## Built with
 
-Tauri, Rust, React, TypeScript, and Vite. Ebook formats are parsed and rendered by [foliate-js](https://github.com/johnfactotum/foliate-js) (MIT) by John Factotum, which bundles [pdf.js](https://github.com/mozilla/pdf.js) (Apache-2.0) by Mozilla. Both are vendored under `vendor/` with their licenses kept in place.
+Tauri, Rust, React, TypeScript, and Vite. EPUBs are parsed and rendered by [foliate-js](https://github.com/johnfactotum/foliate-js) (MIT) by John Factotum, vendored under `vendor/` with its license kept in place.
 
 ## License
 
 Novus is licensed under the [MIT License](LICENSE).
 
-The third-party components in `vendor/` keep their own licenses (foliate-js is MIT, pdf.js is Apache-2.0).
+The third-party components in `vendor/` keep their own licenses (foliate-js is MIT).
 
 ## Contact
 

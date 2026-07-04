@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Highlighter, List, X } from "lucide-react";
 
 import { bookUrl } from "../../lib/assets";
-import { getReadingState, logSession, saveReadingState } from "../../lib/ipc";
+import { getReadingState, recordSession, saveReadingState } from "../../lib/ipc";
+import { ReadingSession } from "../../reader/readingSession";
 import {
   HIGHLIGHT_COLOR_KEYS,
   tintFor,
@@ -51,6 +52,10 @@ const READ_THEMES: Record<ReaderSettings["readTheme"], { bg: string; ink: string
   dark: { bg: "#0c0d10", ink: "#c9ccd4" },
 };
 const CHROME_IDLE_MS = 2600;
+
+const DWELL_SAVE_MS = 3000;
+const UNMOUNT_SAVE_MIN_DWELL_MS = 1500;
+const SESSION_FLUSH_MS = 60_000;
 
 function buildHighlightCss(colors: ColorMap): string {
   const slots = HIGHLIGHT_COLOR_KEYS.map(
@@ -142,9 +147,11 @@ export function Reader() {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<NovusRenderer | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sessionStart = useRef(0);
-  const pagesTurned = useRef(0);
-  const prevFraction = useRef(0);
+  const pendingSave = useRef<{ cfi: string | null; fraction: number } | null>(null);
+  const lastMoveAt = useRef(0);
+  const restored = useRef(false);
+  const session = useRef<ReadingSession | null>(null);
+  const lastFraction = useRef(0);
 
   const [ready, setReady] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -182,21 +189,34 @@ export function Reader() {
       setProgress(fraction);
       setLocation(detail.location ?? null);
       if (detail.tocItem?.label) setChapter(detail.tocItem.label);
-      if (fraction > prevFraction.current + 0.0005) pagesTurned.current += 1;
-      prevFraction.current = fraction;
+      lastFraction.current = fraction;
+      if (!restored.current || detail.reason === "layout") return;
+      session.current?.add(fraction, detail.reason);
+      lastMoveAt.current = Date.now();
+      pendingSave.current = { cfi: detail.cfi ?? null, fraction };
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        saveReadingState(book.id, detail.cfi ?? null, fraction).catch(() => {});
-      }, 800);
+        const pending = pendingSave.current;
+        if (!pending) return;
+        pendingSave.current = null;
+        saveReadingState(book.id, pending.cfi, pending.fraction).catch(() => {});
+      }, DWELL_SAVE_MS);
     };
 
     const onLoad = (detail: import("../../reader/types").LoadDetail) => {
       detail.doc?.addEventListener("mousemove", revealChrome);
     };
 
-    sessionStart.current = Math.floor(Date.now() / 1000);
-    pagesTurned.current = 0;
-    prevFraction.current = 0;
+    lastFraction.current = 0;
+    restored.current = false;
+    pendingSave.current = null;
+    session.current = null;
+
+    const flushSession = () => {
+      const record = session.current?.toRecord(book.id);
+      if (record) recordSession(record).catch(() => {});
+    };
+    const flushTimer = setInterval(flushSession, SESSION_FLUSH_MS);
 
     (async () => {
       const url = bookUrl(book, storageRoot);
@@ -232,16 +252,22 @@ export function Reader() {
           await renderer.resetPosition();
         }
       }
+      restored.current = true;
+      session.current = new ReadingSession(lastFraction.current);
       setReady(true);
     })();
 
     return () => {
       cancelled = true;
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      const end = Math.floor(Date.now() / 1000);
-      if (sessionStart.current > 0 && end - sessionStart.current >= 3) {
-        logSession(book.id, sessionStart.current, end, pagesTurned.current).catch(() => {});
+      const pending = pendingSave.current;
+      if (pending && Date.now() - lastMoveAt.current >= UNMOUNT_SAVE_MIN_DWELL_MS) {
+        saveReadingState(book.id, pending.cfi, pending.fraction).catch(() => {});
       }
+      pendingSave.current = null;
+      clearInterval(flushTimer);
+      flushSession();
+      session.current = null;
       renderer?.destroy();
       viewRef.current = null;
       setReady(false);

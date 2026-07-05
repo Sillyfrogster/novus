@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Highlighter, List, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Headphones, Highlighter, List, X } from "lucide-react";
 
 import { bookUrl } from "../../lib/assets";
 import { getReadingState, recordSession, saveReadingState } from "../../lib/ipc";
@@ -15,9 +15,16 @@ import type { RenderHighlight, SelectionDetail, TocItem } from "../../reader/typ
 import { FONT_STACKS, useReaderSettings, type ReaderSettings } from "../../store/reader";
 import { useHighlights } from "../../store/highlights";
 import { useLibrary } from "../../store/library";
+import { ttsShutdown } from "../../lib/ipc";
+import { collectSentences, type SentenceSeed } from "../../reader/sentences";
+import { TtsMarks } from "../../reader/ttsMarks";
+import { TtsPlayer, type TtsPlayerStatus } from "../../reader/ttsPlayer";
+import { useTts } from "../../store/tts";
 import { DisplaySettings } from "./DisplaySettings";
 import { HighlightBar } from "./HighlightBar";
 import { HighlightsPanel } from "./HighlightsPanel";
+import { PlayerPill } from "./PlayerPill";
+import { VoicePanel } from "./VoicePanel";
 import { WhyBox } from "./WhyBox";
 import styles from "./Reader.module.css";
 
@@ -128,6 +135,28 @@ function buildBookCss(s: ReaderSettings, colors: ColorMap): string {
     a:link, a:visited { color: ${t.ink} !important; }
     pre { white-space: pre-wrap !important; }
     ${buildHighlightCss(colors)}
+    ${buildTtsCss(t)}
+  `;
+}
+
+/**
+ * Follow-along tints for read-aloud
+ */
+function buildTtsCss(t: { bg: string; ink: string }): string {
+  const wash = `color-mix(in srgb, ${t.ink} 9%, transparent)`;
+  const word = `color-mix(in srgb, ${t.ink} 24%, transparent)`;
+  return `
+    mark.nv-tts, mark.nv-tts-w {
+      color: inherit !important;
+      background-color: transparent;
+      background-repeat: no-repeat;
+      background-size: 100% 100%;
+      border-radius: 2px;
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+    }
+    mark.nv-tts { background-image: linear-gradient(${wash}, ${wash}); }
+    mark.nv-tts-w.nv-tts-on { background-image: linear-gradient(${word}, ${word}); }
   `;
 }
 
@@ -161,6 +190,7 @@ export function Reader() {
   const [tocOpen, setTocOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [chromeHidden, setChromeHidden] = useState(false);
   const [selection, setSelection] = useState<SelectionDetail | null>(null);
   const [whyForId, setWhyForId] = useState<string | null>(null);
@@ -169,7 +199,7 @@ export function Reader() {
 
   const chromeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayOpenRef = useRef(false);
-  overlayOpenRef.current = settingsOpen || tocOpen || panelOpen;
+  overlayOpenRef.current = settingsOpen || tocOpen || panelOpen || voiceOpen;
 
   const revealChrome = useCallback(() => {
     setChromeHidden(false);
@@ -318,13 +348,13 @@ export function Reader() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (settingsOpen || tocOpen || panelOpen || selection || whyForId) return;
+      if (settingsOpen || tocOpen || panelOpen || voiceOpen || selection || whyForId) return;
       if (e.key === "ArrowRight") viewRef.current?.next();
       else if (e.key === "ArrowLeft") viewRef.current?.prev();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [settingsOpen, tocOpen, panelOpen, selection, whyForId]);
+  }, [settingsOpen, tocOpen, panelOpen, voiceOpen, selection, whyForId]);
 
   // Auto-hide the chrome on idle; any pointer/key activity brings it back.
   useEffect(() => {
@@ -342,13 +372,144 @@ export function Reader() {
 
   // Keep the chrome present the whole time a drawer is open.
   useEffect(() => {
-    if (settingsOpen || tocOpen || panelOpen) {
+    if (settingsOpen || tocOpen || panelOpen || voiceOpen) {
       setChromeHidden(false);
       if (chromeTimer.current) clearTimeout(chromeTimer.current);
     } else if (ready) {
       revealChrome();
     }
-  }, [settingsOpen, tocOpen, panelOpen, ready, revealChrome]);
+  }, [settingsOpen, tocOpen, panelOpen, voiceOpen, ready, revealChrome]);
+
+  // Restore this book's remembered voice once per open.
+  useEffect(() => {
+    if (book?.id) useTts.getState().applyBookPrefs(book.id);
+  }, [book?.id]);
+
+  // read-aloud
+
+  const player = useRef<TtsPlayer | null>(null);
+  const marks = useRef(new TtsMarks());
+  const sleepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ttsStatus = useTts((s) => s.status);
+  const ttsError = useTts((s) => s.playerError);
+  const ttsSpeed = useTts((s) => s.speed);
+  const ttsSleep = useTts((s) => s.sleep);
+
+  const stopListening = useCallback(() => {
+    player.current?.destroy();
+    player.current = null;
+    marks.current.clear();
+    if (sleepTimer.current) clearTimeout(sleepTimer.current);
+    sleepTimer.current = null;
+    useTts.getState().setStatus("idle");
+    ttsShutdown().catch(() => {});
+  }, []);
+
+  const startListening = useCallback(() => {
+    const renderer = viewRef.current;
+    const doc = renderer?.contentDocument;
+    const tts = useTts.getState();
+    if (!renderer || !doc || !book) return;
+    if (!tts.packId || !tts.voiceId) {
+      setVoiceOpen(true);
+      return;
+    }
+    player.current?.destroy();
+
+    // Start at the first sentence on the current page.
+    const visible = renderer.visibleRange();
+    let startIndex = -1;
+    const seeds: SentenceSeed[] = collectSentences(
+      doc,
+      (range) => renderer.cfiFromRange(range),
+      (range, index) => {
+        if (startIndex >= 0 || !visible) return;
+        const beforeEnd = range.compareBoundaryPoints(Range.END_TO_START, visible) < 0;
+        const afterStart = range.compareBoundaryPoints(Range.START_TO_END, visible) > 0;
+        if (beforeEnd && afterStart) startIndex = index;
+      },
+    );
+    if (seeds.length === 0) return;
+
+    tts.rememberForBook(book.id);
+    const instance = new TtsPlayer(
+      renderer,
+      { packId: tts.packId, voiceId: tts.voiceId, speed: tts.speed },
+      {
+        onStatus: (status: TtsPlayerStatus, error?: string) => {
+          if (player.current !== instance) return;
+          if (status === "finished") stopListening();
+          else useTts.getState().setStatus(status, error ?? null);
+        },
+        onSentenceStart: (seed, words) => {
+          if (player.current !== instance) return;
+          marks.current.clear();
+          const range = renderer.rangeFromCfi(seed.cfi);
+          if (!range) return;
+          if (!renderer.isRangeVisible(range)) void renderer.revealRange(range);
+          marks.current.beginSentence(range, seed.text, words);
+        },
+        onSentenceEnd: () => {
+          if (player.current === instance) {
+            session.current?.add(lastFraction.current, "tts");
+          }
+        },
+      },
+    );
+    player.current = instance;
+    void instance.start(seeds, Math.max(0, startIndex));
+  }, [book, stopListening]);
+
+  const toggleListening = useCallback(() => {
+    if (player.current) stopListening();
+    else {
+      setVoiceOpen(false);
+      startListening();
+    }
+  }, [startListening, stopListening]);
+
+  // Pace changes restart the current sentence at the new speed.
+  useEffect(() => {
+    void player.current?.setSpeed(ttsSpeed);
+  }, [ttsSpeed]);
+
+  // Word-by-word follow-along, driven by the audio clock.
+  useEffect(() => {
+    if (ttsStatus !== "playing") return;
+    let raf = 0;
+    const tick = () => {
+      const playhead = player.current?.playhead();
+      if (playhead) {
+        const changedWord = marks.current.setActive(playhead.elapsedMs);
+        const renderer = viewRef.current;
+        if (changedWord && renderer) {
+          const wordRange = changedWord.ownerDocument.createRange();
+          wordRange.selectNodeContents(changedWord);
+          if (!renderer.isRangeVisible(wordRange)) void renderer.revealRange(wordRange);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [ttsStatus]);
+
+  useEffect(() => {
+    if (sleepTimer.current) clearTimeout(sleepTimer.current);
+    sleepTimer.current = null;
+    const instance = player.current;
+    if (!instance || ttsStatus === "idle") return;
+    instance.stopAtSectionEnd = ttsSleep === "chapter";
+    if (ttsSleep !== "off" && ttsSleep !== "chapter") {
+      sleepTimer.current = setTimeout(stopListening, Number(ttsSleep) * 60_000);
+    }
+  }, [ttsSleep, ttsStatus, stopListening]);
+
+  useEffect(() => {
+    if (book?.id && ttsStatus !== "idle") useTts.getState().rememberForBook(book.id);
+  }, [book?.id, ttsSpeed, ttsStatus]);
+
+  useEffect(() => stopListening, [book?.id, stopListening]);
 
   if (!book) return null;
 
@@ -423,6 +584,14 @@ export function Reader() {
             onClick={() => setPanelOpen(true)}
           >
             <Highlighter size={17} strokeWidth={1.8} />
+          </button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            title="Listen"
+            onClick={() => setVoiceOpen(true)}
+          >
+            <Headphones size={17} strokeWidth={1.8} />
           </button>
           <button type="button" className={styles.aaBtn} title="Display settings" onClick={() => setSettingsOpen(true)}>
             Aa
@@ -504,6 +673,28 @@ export function Reader() {
 
       {panelOpen && (
         <HighlightsPanel onJump={jumpToHighlight} onClose={() => setPanelOpen(false)} />
+      )}
+
+      {voiceOpen && (
+        <VoicePanel
+          listening={ttsStatus !== "idle"}
+          onToggleListen={toggleListening}
+          onClose={() => setVoiceOpen(false)}
+        />
+      )}
+
+      {ttsStatus !== "idle" && (
+        <PlayerPill
+          status={ttsStatus}
+          error={ttsError}
+          hidden={chromeHidden}
+          onPlayPause={() => {
+            if (ttsStatus === "playing") player.current?.pause();
+            else player.current?.resume();
+          }}
+          onSkip={(delta) => void player.current?.skip(delta)}
+          onStop={stopListening}
+        />
       )}
 
       {selection && (

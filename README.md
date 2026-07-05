@@ -24,6 +24,11 @@ Download the latest build for your platform from the [Releases page](https://git
 
 Tauri, Rust, React, TypeScript, and Vite. EPUBs are parsed and rendered by [foliate-js](https://github.com/johnfactotum/foliate-js) (MIT) by John Factotum, vendored under `vendor/` with its license kept in place.
 
+## Related repositories
+
+- [novus-voice](https://github.com/Sillyfrogster/novus-voice) — the offline text-to-speech engine behind read-aloud. A separate GPL-licensed program that Novus runs alongside itself; prebuilt binaries from its releases are fetched automatically at build time (version pinned in `scripts/sidecar.mjs`).
+- [novus-voices](https://github.com/Sillyfrogster/novus-voices) — downloadable voice packs, published as GitHub releases and fetched by the app on demand.
+
 ## License
 
 Novus is licensed under the [MIT License](LICENSE).

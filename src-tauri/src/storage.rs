@@ -39,6 +39,10 @@ impl Storage {
         self.root.join("covers")
     }
 
+    pub fn voice_packs_dir(&self) -> PathBuf {
+        self.root.join("voice-packs")
+    }
+
     /// Absolute path for a managed book file given its stored relative path.
     pub fn resolve(&self, rel_path: &str) -> PathBuf {
         self.root.join(rel_path)

@@ -3,6 +3,7 @@ mod db;
 mod error;
 mod import;
 mod storage;
+mod voice;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -10,11 +11,12 @@ use std::sync::Arc;
 use db::Db;
 use storage::Storage;
 use tauri::Manager;
+use voice::VoiceService;
 
-/// Shared application state: the managed storage tree and the SQLite library.
 pub struct Novus {
     pub storage: Storage,
     pub db: Db,
+    pub voice: Arc<VoiceService>,
 }
 
 pub struct ZoomGuard(pub Arc<AtomicBool>);
@@ -31,7 +33,8 @@ pub fn run() {
         .setup(move |app| {
             let storage = Storage::initialize(app.handle())?;
             let db = Db::open(&storage.db_path())?;
-            app.manage(Novus { storage, db });
+            let voice = Arc::new(VoiceService::new(storage.voice_packs_dir()));
+            app.manage(Novus { storage, db, voice });
 
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {
@@ -72,6 +75,12 @@ pub fn run() {
             commands::set_highlight_note,
             commands::delete_highlight,
             commands::write_file,
+            commands::fetch_voice_registry,
+            commands::list_voice_packs,
+            commands::download_voice_pack,
+            commands::delete_voice_pack,
+            commands::synthesize_sentence,
+            commands::tts_shutdown,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

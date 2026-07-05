@@ -14,7 +14,7 @@ const makeRange = (doc: Document, node: Node, start: number, end = start): Range
  */
 export function uncollapse(range: Range | Node | null): Range | Node | null {
   if (!range) return range;
-  if (!(range instanceof Range) || !range.collapsed) return range;
+  if (!("startContainer" in range) || !range.collapsed) return range;
   const { endOffset, endContainer } = range;
   if (endContainer.nodeType === 1) {
     const node = endContainer.childNodes[endOffset];

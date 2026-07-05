@@ -1,10 +1,23 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const VERSION = "v0.1.1";
 const REPO = "Sillyfrogster/novus-voice";
+
+const MAX_ATTEMPTS = 4;
+const REQUEST_TIMEOUT_MS = 30_000;
+const RETRY_BASE_MS = 500;
 
 const lenient = process.argv.includes("--lenient");
 const targetFlag = process.argv.indexOf("--target");
@@ -16,12 +29,13 @@ if (!target) throw new Error("could not determine target triple (pass --target <
 
 const ext = target.includes("windows") ? ".exe" : "";
 const asset = `novus-voice-${target}${ext}`;
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 const destDir = join(root, "src-tauri", "binaries");
 const dest = join(destDir, asset);
 const stampPath = join(destDir, `.${asset}.stamp.json`);
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function isAlreadyStaged() {
   if (!existsSync(dest) || !existsSync(stampPath)) return false;
@@ -34,16 +48,42 @@ function isAlreadyStaged() {
 }
 
 async function fetchBytes(url) {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(
-      `GET ${url} → ${res.status} ${res.statusText}` +
-        (res.status === 404
-          ? ` (does the ${VERSION} release exist on ${REPO} with an asset for ${target}?)`
-          : ""),
-    );
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+      if (!res.ok) {
+        const hint =
+          res.status === 404
+            ? ` (does the ${VERSION} release exist on ${REPO} with an asset for ${target}?)`
+            : "";
+        const err = new Error(`GET ${url} → ${res.status} ${res.statusText}${hint}`);
+        err.retryable = res.status === 429 || res.status >= 500;
+        throw err;
+      }
+      return Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      lastErr = err;
+      const retryable = err.retryable ?? true;
+      if (!retryable || attempt === MAX_ATTEMPTS) break;
+      const delay = RETRY_BASE_MS * 2 ** (attempt - 1);
+      console.warn(`  attempt ${attempt}/${MAX_ATTEMPTS} failed: ${err.message} — retrying in ${delay}ms`);
+      await sleep(delay);
+    }
   }
-  return Buffer.from(await res.arrayBuffer());
+  throw lastErr;
+}
+
+function writeAtomic(path, bytes, mode) {
+  const tmp = `${path}.tmp`;
+  try {
+    writeFileSync(tmp, bytes);
+    if (mode !== undefined) chmodSync(tmp, mode);
+    renameSync(tmp, path);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
 }
 
 async function stage() {
@@ -61,9 +101,8 @@ async function stage() {
   }
 
   mkdirSync(destDir, { recursive: true });
-  writeFileSync(dest, bin);
-  if (!ext) chmodSync(dest, 0o755);
-  writeFileSync(stampPath, JSON.stringify({ version: VERSION, sha256: actual }));
+  writeAtomic(dest, bin, ext ? undefined : 0o755);
+  writeAtomic(stampPath, JSON.stringify({ version: VERSION, sha256: actual }));
   console.log(`staged ${dest} (sha256 verified)`);
 }
 

@@ -19,6 +19,14 @@ export interface Release {
 /** Newest first. Add a new entry at the top each release. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.3.1",
+    date: "2026-07-05",
+    title: "A quieter launch",
+    notes: [
+      { kind: "fixed", text: "A stray console window no longer flashes open when a book is read aloud." },
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-07-05",
     title: "Listen, highlight, look back",

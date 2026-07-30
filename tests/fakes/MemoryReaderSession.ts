@@ -22,7 +22,7 @@ export class MemoryReaderSession implements ReaderSession {
     this.#contents = contents;
   }
 
-  async open(_file: File): Promise<readonly TocItem[]> {
+  async open(_bookId: string): Promise<readonly TocItem[]> {
     if (this.disposed) throw new Error("Reader is closed");
     return this.#contents;
   }

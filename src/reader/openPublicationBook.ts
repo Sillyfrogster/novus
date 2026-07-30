@@ -12,6 +12,11 @@ import type { BookModel, BookSection, ResolvedTarget } from "./types";
 
 const URI_SCHEME = /^[a-z][a-z\d+.-]*:/i;
 
+interface ManagedSection {
+  section: BookSection;
+  close(): void;
+}
+
 function splitHref(href: string): [string, string | null] {
   const hashAt = href.indexOf("#");
   const path = hashAt < 0 ? href : href.slice(0, hashAt);
@@ -56,61 +61,84 @@ function createSection(
   sessionId: string,
   resourceRoot: string,
   isClosed: () => boolean,
-): BookSection {
+): ManagedSection {
   let source: ReturnType<typeof createPublicationSectionSource> | null = null;
   let loading: { generation: number; promise: Promise<string> } | null = null;
   let generation = 0;
+  let references = 0;
 
-  const unload = () => {
+  const revoke = () => {
     generation += 1;
     source?.revoke();
     source = null;
   };
 
-  return {
+  const section: BookSection = {
     id: hrefKey(description.id),
     linear: description.linear ? undefined : "no",
     size: description.size,
     cfi: description.cfi,
     async load() {
       if (isClosed()) throw new Error("Reader is closed");
-      if (source) return source.url;
-      if (loading?.generation === generation) return loading.promise;
+      let url = source?.url;
+      if (!url) {
+        if (loading?.generation === generation) {
+          url = await loading.promise;
+        } else {
+          const requestedGeneration = generation;
+          const promise = loadPublicationSection(sessionId, index)
+            .then((loaded) => {
+              if (
+                loaded.index !== index ||
+                hrefKey(loaded.href) !== hrefKey(description.href)
+              ) {
+                throw new Error("The publication returned the wrong section");
+              }
 
-      const requestedGeneration = generation;
-      const promise = loadPublicationSection(sessionId, index)
-        .then((loaded) => {
-          if (
-            loaded.index !== index ||
-            hrefKey(loaded.href) !== hrefKey(description.href)
-          ) {
-            throw new Error("The publication returned the wrong section");
-          }
+              const nextSource = createPublicationSectionSource({
+                markup: loaded.markup,
+                mediaType: loaded.mediaType,
+                sectionPath: description.href,
+                resourceRoot,
+                sessionId,
+              });
+              if (isClosed() || generation !== requestedGeneration) {
+                nextSource.revoke();
+                throw new Error("Reader is closed");
+              }
 
-          const nextSource = createPublicationSectionSource({
-            markup: loaded.markup,
-            mediaType: loaded.mediaType,
-            sectionPath: description.href,
-            resourceRoot,
-            sessionId,
-          });
-          if (isClosed() || generation !== requestedGeneration) {
-            nextSource.revoke();
-            throw new Error("Reader is closed");
-          }
+              source = nextSource;
+              return nextSource.url;
+            })
+            .finally(() => {
+              if (loading?.promise === promise) loading = null;
+            });
+          loading = { generation: requestedGeneration, promise };
+          url = await promise;
+        }
+      }
 
-          source = nextSource;
-          return nextSource.url;
-        })
-        .finally(() => {
-          if (loading?.promise === promise) loading = null;
-        });
-      loading = { generation: requestedGeneration, promise };
-      return promise;
+      if (isClosed() || !source || source.url !== url) {
+        throw new Error("Reader is closed");
+      }
+      references += 1;
+      return url;
     },
-    unload,
+    unload() {
+      if (references === 0) return;
+      references -= 1;
+      if (references === 0) revoke();
+    },
     resolveHref(href) {
       return resolvePublicationPath(description.href, href) ?? href;
+    },
+  };
+
+  return {
+    section,
+    close() {
+      references = 0;
+      revoke();
     },
   };
 }
@@ -132,7 +160,7 @@ export async function openPublicationBook(bookId: string): Promise<BookModel> {
       ]),
     );
     let closed = false;
-    const sections = bridge.sections.map((section, index) =>
+    const managedSections = bridge.sections.map((section, index) =>
       createSection(
         section,
         index,
@@ -141,6 +169,7 @@ export async function openPublicationBook(bookId: string): Promise<BookModel> {
         () => closed,
       ),
     );
+    const sections = managedSections.map(({ section }) => section);
 
     const resolveHref = (href: string): ResolvedTarget => {
       const [path, encodedFragment] = splitHref(href);
@@ -182,7 +211,7 @@ export async function openPublicationBook(bookId: string): Promise<BookModel> {
       destroy() {
         if (closed) return;
         closed = true;
-        for (const section of sections) section.unload?.();
+        for (const section of managedSections) section.close();
         void closePublication(opened.session).catch(() => {});
       },
     };

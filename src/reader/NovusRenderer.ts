@@ -1,3 +1,5 @@
+import * as CFI from "../../vendor/foliate-js/epubcfi.js";
+
 import type {
   ReaderDestination,
   ReaderEvent,
@@ -5,9 +7,10 @@ import type {
   ReaderPresentation,
   ReaderSession,
 } from "./contract";
+import { FrameBatch } from "./FrameBatch";
 import { getVisibleRange, uncollapse, type RectMapper } from "./geometry";
 import { unwrapHighlightMarks, wrapRangeInMarks } from "./highlightMarks";
-import { openBook } from "./openBook";
+import { openPublicationBook } from "./openPublicationBook";
 import { readerCss } from "./presentation";
 import type {
   BookModel,
@@ -105,7 +108,7 @@ export class NovusRenderer implements ReaderSession {
   #sections: BookSection[] = [];
   #sectionProgress: import("../../vendor/foliate-js/progress.js").SectionProgress | null = null;
   #tocProgress: import("../../vendor/foliate-js/progress.js").TOCProgress | null = null;
-  #cfi: typeof import("../../vendor/foliate-js/epubcfi.js") | null = null;
+  #cfi: typeof CFI | null = null;
   #toc: TocItem[] = [];
 
   #flow: Flow = "paginated";
@@ -117,10 +120,15 @@ export class NovusRenderer implements ReaderSession {
   #size = 0;
   #margin = 0;
   #locked = false;
+  #pendingTurn: 1 | -1 | null = null;
+  #displayGeneration = 0;
+  #cancelMount: (() => void) | null = null;
 
   #observer: ResizeObserver;
   #scrollTimer: ReturnType<typeof setTimeout> | null = null;
   #suppressScroll = false;
+  #renderBatch = new FrameBatch();
+  #activityBatch = new FrameBatch();
   #listeners = new Set<ReaderListener>();
   #disposed = false;
 
@@ -157,6 +165,7 @@ export class NovusRenderer implements ReaderSession {
   }
 
   subscribe(listener: ReaderListener): () => void {
+    if (this.#disposed) return () => {};
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   }
@@ -166,14 +175,13 @@ export class NovusRenderer implements ReaderSession {
     for (const listener of this.#listeners) listener(event);
   }
 
-  async open(file: File): Promise<readonly TocItem[]> {
+  async open(bookId: string): Promise<readonly TocItem[]> {
     if (this.#disposed) throw new Error("Reader is closed");
     if (this.#book) throw new Error("Reader is already open");
 
-    const [book, { SectionProgress, TOCProgress }, CFI] = await Promise.all([
-      openBook(file),
+    const [book, { SectionProgress, TOCProgress }] = await Promise.all([
+      openPublicationBook(bookId),
       import("../../vendor/foliate-js/progress.js"),
-      import("../../vendor/foliate-js/epubcfi.js"),
     ]);
     if (this.#disposed) {
       book.destroy?.();
@@ -182,7 +190,7 @@ export class NovusRenderer implements ReaderSession {
     this.#book = book;
     this.#sections = book.sections;
     this.#toc = book.toc ?? [];
-    this.#cfi = CFI as typeof import("../../vendor/foliate-js/epubcfi.js");
+    this.#cfi = CFI;
 
     const ids = book.sections.map((s) => String(s.id));
     this.#sectionProgress = new SectionProgress(book.sections, 1500, 1600);
@@ -201,7 +209,11 @@ export class NovusRenderer implements ReaderSession {
     const CFI = this.#cfi;
     if (!book || !CFI) return null;
     try {
-      if (book.resolveCFI) return book.resolveCFI(cfi);
+      const resolved = book.resolveCFI?.(cfi);
+      if (resolved) return resolved;
+    } catch {
+    }
+    try {
       const parts = CFI.parse(cfi);
       const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
       return { index, anchor: (doc: Document) => CFI.toRange(doc, parts) };
@@ -227,6 +239,7 @@ export class NovusRenderer implements ReaderSession {
   }
 
   async navigate(destination: ReaderDestination): Promise<boolean> {
+    if (this.#disposed) return false;
     if (destination.kind === "start") return this.#goToStart();
     if (destination.kind === "highlight") return this.#goToHighlight(destination.value);
     return this.#goToTarget(destination.value);
@@ -235,8 +248,7 @@ export class NovusRenderer implements ReaderSession {
   async #goToTarget(target: string): Promise<boolean> {
     const resolved = await this.#resolve(target);
     if (!resolved || !this.#canGoToIndex(resolved.index)) return false;
-    await this.#display(resolved.index, resolved.anchor ?? 0, "navigation");
-    return true;
+    return this.#display(resolved.index, resolved.anchor ?? 0, "navigation");
   }
 
   async #goToStart(): Promise<boolean> {
@@ -244,44 +256,49 @@ export class NovusRenderer implements ReaderSession {
     const target = index < 0 ? 0 : index;
     if (!this.#canGoToIndex(target)) return false;
     this.#anchor = 0;
-    await this.#display(target, 0, "navigation");
-    return true;
+    return this.#display(target, 0, "navigation");
   }
 
   turn(direction: "next" | "previous"): void {
-    void this.#turnPage(direction === "next" ? 1 : -1);
+    if (this.#disposed) return;
+    const value = direction === "next" ? 1 : -1;
+    if (this.#locked) {
+      this.#pendingTurn = value;
+      return;
+    }
+    void this.#turnPage(value);
   }
 
   configure(presentation: ReaderPresentation): void {
-    this.#setFlow(presentation.layout === "paged" ? "paginated" : "scrolled");
-    this.#setMaxInlineSize(presentation.measure);
-    this.#setStyles(readerCss(presentation));
-  }
+    if (this.#disposed) return;
+    const flow = presentation.layout === "paged" ? "paginated" : "scrolled";
+    const styles = readerCss(presentation);
+    const changed =
+      flow !== this.#flow ||
+      presentation.measure !== this.maxInlineSize ||
+      styles !== this.#styles;
+    if (!changed) return;
 
-  #setFlow(flow: Flow): void {
-    if (flow === this.#flow) return;
     this.#flow = flow;
+    this.maxInlineSize = presentation.measure;
+    this.#styles = styles;
     this.#container.style.overflow = flow === "scrolled" ? "auto" : "hidden";
-    if (this.#iframe?.contentDocument) this.#render("resize");
-  }
+    if (!this.#iframe?.contentDocument) return;
 
-  #setMaxInlineSize(px: number): void {
-    if (px === this.maxInlineSize) return;
-    this.maxInlineSize = px;
-    if (this.#iframe?.contentDocument) this.#render("resize");
-  }
-
-  #setStyles(css: string): void {
-    this.#styles = css;
-    if (this.#styleEl) this.#styleEl.textContent = css;
-    const doc = this.#iframe?.contentDocument;
-    if (doc) {
-      requestAnimationFrame(() => (this.#container.style.background = getBackground(doc)));
-      doc.fonts?.ready?.then(() => this.#expand());
-    }
+    this.#renderBatch.schedule(() => {
+      const doc = this.#iframe?.contentDocument;
+      if (!doc) return;
+      if (this.#styleEl) this.#styleEl.textContent = this.#styles;
+      this.#container.style.background = getBackground(doc);
+      this.#render("resize");
+      void doc.fonts?.ready?.then(() => {
+        if (!this.#disposed && doc === this.#iframe?.contentDocument) this.#expand();
+      });
+    });
   }
 
   replaceHighlights(highlights: readonly RenderHighlight[], newId?: string): void {
+    if (this.#disposed) return;
     this.#highlights = [...highlights];
     this.#newHighlightId = newId ?? null;
     const doc = this.#iframe?.contentDocument;
@@ -294,6 +311,7 @@ export class NovusRenderer implements ReaderSession {
   }
 
   clearSelection(): void {
+    if (this.#disposed) return;
     this.#iframe?.contentDocument?.getSelection()?.removeAllRanges();
     this.#emit({ type: "selection", detail: null });
   }
@@ -302,11 +320,14 @@ export class NovusRenderer implements ReaderSession {
     const CFI = this.#cfi;
     if (!CFI) return false;
     try {
+      const resolved = this.#resolveCfi(cfi);
+      if (!resolved || !this.#canGoToIndex(resolved.index)) return false;
       const parts = CFI.parse(cfi);
-      const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
-      if (!this.#canGoToIndex(index)) return false;
-      await this.#display(index, (doc) => CFI.toRange(doc, parts, cfiFilter), "navigation");
-      return true;
+      return this.#display(
+        resolved.index,
+        (doc) => CFI.toRange(doc, parts, cfiFilter),
+        "navigation",
+      );
     } catch (e) {
       console.warn(`NovusRenderer: could not navigate to highlight ${cfi}`, e);
       return false;
@@ -318,10 +339,23 @@ export class NovusRenderer implements ReaderSession {
     this.#disposed = true;
     this.#observer.disconnect();
     if (this.#scrollTimer) clearTimeout(this.#scrollTimer);
+    this.#renderBatch.clear();
+    this.#activityBatch.clear();
+    this.#pendingTurn = null;
+    this.#displayGeneration += 1;
+    this.#cancelMount?.();
+    this.#cancelMount = null;
     this.#sections[this.#index]?.unload?.();
     this.#book?.destroy?.();
     this.#container.remove();
     this.#book = null;
+    this.#sections = [];
+    this.#sectionProgress = null;
+    this.#tocProgress = null;
+    this.#cfi = null;
+    this.#toc = [];
+    this.#styleEl = null;
+    this.#highlights = [];
     this.#listeners.clear();
   }
 
@@ -341,50 +375,100 @@ export class NovusRenderer implements ReaderSession {
     index: number,
     anchor: number | ((doc: Document) => Range | Node),
     reason: ScrollReason,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    const generation = ++this.#displayGeneration;
     if (index === this.#index) {
-      const a = typeof anchor === "function" ? anchor(this.#iframe.contentDocument!) : anchor;
+      const document = this.#iframe?.contentDocument;
+      if (!document) return false;
+      const a = typeof anchor === "function" ? anchor(document) : anchor;
       await this.#scrollToAnchor(a, reason);
-      return;
+      return true;
     }
     const section = this.#sections[index];
-    if (!section) return;
+    if (!section) return false;
     let source: string;
     try {
       source = await section.load();
     } catch (e) {
       console.warn(`NovusRenderer: failed to load section ${index}`, e);
-      return;
+      return false;
     }
-    const oldIndex = this.#index;
-    this.#index = index;
+    if (this.#disposed || generation !== this.#displayGeneration) {
+      section.unload?.();
+      return false;
+    }
 
-    await this.#mountSection(source);
+    const oldIndex = this.#index;
+    const mounted = await this.#mountSection(source, index, generation);
+    if (!mounted) {
+      section.unload?.();
+      return false;
+    }
     this.#sections[oldIndex]?.unload?.();
+    if (this.#disposed || generation !== this.#displayGeneration) return false;
 
     const doc = this.#iframe.contentDocument!;
     const a = typeof anchor === "function" ? anchor(doc) : anchor;
     await this.#scrollToAnchor(a, reason);
+    return !this.#disposed && generation === this.#displayGeneration;
   }
 
-  #mountSection(src: string): Promise<void> {
+  #mountSection(
+    src: string,
+    index: number,
+    generation: number,
+  ): Promise<boolean> {
+    this.#cancelMount?.();
+
     const element = document.createElement("div");
     Object.assign(element.style, ELEMENT_STYLE);
+    Object.assign(element.style, {
+      position: "absolute",
+      inset: "0",
+      visibility: "hidden",
+    });
     const iframe = document.createElement("iframe");
     Object.assign(iframe.style, IFRAME_STYLE);
-    iframe.setAttribute("sandbox", "allow-same-origin allow-scripts");
+    iframe.setAttribute("sandbox", "allow-same-origin");
     iframe.setAttribute("scrolling", "no");
     element.append(iframe);
+    this.#container.append(element);
 
-    this.#container.replaceChildren(element);
-    this.#element = element;
-    this.#iframe = iframe;
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      let cancel = () => {};
+      const finish = (mounted: boolean) => {
+        if (settled) return;
+        settled = true;
+        iframe.removeEventListener("load", onLoad);
+        if (this.#cancelMount === cancel) this.#cancelMount = null;
+        resolve(mounted);
+      };
+      const onLoad = () => {
+        if (
+          this.#disposed ||
+          generation !== this.#displayGeneration
+        ) {
+          element.remove();
+          finish(false);
+          return;
+        }
 
-    return new Promise<void>((resolve) => {
-      iframe.addEventListener(
-        "load",
-        () => {
+        const oldElement = this.#element;
+        const oldIframe = this.#iframe;
+        const oldIndex = this.#index;
+        const oldStyle = this.#styleEl;
+        try {
           const doc = iframe.contentDocument!;
+          if (!doc?.body) throw new Error("The publication section has no body");
+
+          element.style.position = "relative";
+          element.style.inset = "";
+          element.style.visibility = "";
+          oldElement.remove();
+          this.#element = element;
+          this.#iframe = iframe;
+          this.#index = index;
           this.#afterLoad(doc);
 
           iframe.style.display = "block";
@@ -397,10 +481,25 @@ export class NovusRenderer implements ReaderSession {
           this.#contentRange.selectNodeContents(doc.body);
 
           this.#renderInto(doc);
-          resolve();
-        },
-        { once: true },
-      );
+          finish(true);
+        } catch (error) {
+          if (!this.#disposed && generation === this.#displayGeneration) {
+            this.#container.replaceChildren(oldElement);
+            this.#element = oldElement;
+            this.#iframe = oldIframe;
+            this.#index = oldIndex;
+            this.#styleEl = oldStyle;
+          }
+          console.warn("NovusRenderer: could not mount this section", error);
+          finish(false);
+        }
+      };
+      cancel = () => {
+        element.remove();
+        finish(false);
+      };
+      this.#cancelMount = cancel;
+      iframe.addEventListener("load", onLoad, { once: true });
       iframe.src = src;
     });
   }
@@ -421,7 +520,9 @@ export class NovusRenderer implements ReaderSession {
   // selection capture
 
   #bindSelection(doc: Document): void {
-    doc.addEventListener("mousemove", () => this.#emit({ type: "activity" }));
+    doc.addEventListener("mousemove", () =>
+      this.#activityBatch.schedule(() => this.#emit({ type: "activity" })),
+    );
     doc.addEventListener("mousedown", () =>
       this.#emit({ type: "selection", detail: null }),
     );
@@ -770,12 +871,10 @@ export class NovusRenderer implements ReaderSession {
   // page turning
 
   async #turnPage(dir: 1 | -1): Promise<void> {
-    if (this.#locked || !this.#iframe?.contentDocument) return;
+    if (!this.#iframe?.contentDocument) return;
     this.#locked = true;
     try {
       const prev = dir === -1;
-      // Each helper scrolls within the current section and returns true only when
-      // it has reached that section's boundary — the signal to cross sections.
       const crossSection = prev ? await this.#scrollPrev() : await this.#scrollNext();
       if (crossSection) {
         const index = this.#adjacentIndex(dir);
@@ -783,6 +882,9 @@ export class NovusRenderer implements ReaderSession {
       }
     } finally {
       this.#locked = false;
+      const pending = this.#pendingTurn;
+      this.#pendingTurn = null;
+      if (pending !== null) void this.#turnPage(pending);
     }
   }
 

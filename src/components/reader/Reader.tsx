@@ -17,7 +17,6 @@ const CHROME_IDLE_MS = 2600;
 export function Reader() {
   const activeBookId = useLibrary((s) => s.activeBookId);
   const books = useLibrary((s) => s.books);
-  const storageRoot = useLibrary((s) => s.storageRoot);
   const goLibrary = useLibrary((s) => s.goLibrary);
   const settings = useReaderSettings();
 
@@ -59,7 +58,6 @@ export function Reader() {
     setSelection,
   } = useBookRenderer({
     activeBookId,
-    storageRoot,
     settings,
     colors,
     highlights,

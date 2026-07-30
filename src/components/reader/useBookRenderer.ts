@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { bookUrl } from "../../lib/assets";
+import { messageOf } from "../../lib/errors";
 import type { HighlightColor } from "../../lib/highlightColors";
 import { getReadingState, recordSession, saveReadingState } from "../../lib/ipc";
 import type { Highlight, HighlightColorKey } from "../../lib/types";
@@ -47,7 +47,6 @@ function toPresentation(
 
 interface UseBookRendererOptions {
   activeBookId: string | null;
-  storageRoot: string;
   settings: ReaderSettings;
   colors: ColorMap;
   highlights: Highlight[];
@@ -56,7 +55,6 @@ interface UseBookRendererOptions {
 
 export function useBookRenderer({
   activeBookId,
-  storageRoot,
   settings,
   colors,
   highlights,
@@ -85,7 +83,7 @@ export function useBookRenderer({
   }, [revealChrome]);
 
   useEffect(() => {
-    if (!activeBookId || !storageRoot) return;
+    if (!activeBookId) return;
     const currentBook = useLibrary.getState().books.find((item) => item.id === activeBookId);
     if (!currentBook) return;
 
@@ -135,15 +133,9 @@ export function useBookRenderer({
     const flushTimer = setInterval(flushSession, SESSION_FLUSH_MS);
 
     const openBook = async () => {
-      const url = bookUrl(currentBook, storageRoot);
-      if (!url || !hostRef.current || cancelled) return;
-      const bookFile = fetch(url, { signal: controller.signal }).then(async (response) => {
-        if (!response.ok) throw new Error(`Could not open book: ${response.status}`);
-        return response.blob();
-      });
-      const [createReader, blob] = await Promise.all([loadReaderFactory(), bookFile]);
+      if (!hostRef.current || cancelled) return;
+      const createReader = await loadReaderFactory();
       if (cancelled) return;
-      const file = new File([blob], `book.${currentBook.format}`);
 
       renderer = createReader(hostRef.current);
       viewRef.current = renderer;
@@ -151,18 +143,24 @@ export function useBookRenderer({
       const currentSettings = useReaderSettings.getState();
       const currentColors = useHighlights.getState().colors;
       renderer.configure(toPresentation(currentSettings, currentColors));
-      const contents = await renderer.open(file);
+      const contents = await renderer.open(currentBook.id);
       if (cancelled) return;
 
       setToc([...contents]);
 
       const pending = useLibrary.getState().consumePendingLocator();
+      let displayed: boolean;
       if (pending) {
-        await restoreReaderPosition(renderer, contents, pending, controller.signal);
+        displayed = await restoreReaderPosition(
+          renderer,
+          contents,
+          pending,
+          controller.signal,
+        );
       } else {
         const saved = await getReadingState(currentBook.id);
         if (cancelled) return;
-        await restoreReaderPosition(
+        displayed = await restoreReaderPosition(
           renderer,
           contents,
           saved?.locator ?? null,
@@ -170,6 +168,9 @@ export function useBookRenderer({
         );
       }
       if (cancelled) return;
+      if (!displayed) {
+        throw new Error("The book does not have a section Novus can display");
+      }
       restored.current = true;
       session.current = new ReadingSession(lastFraction.current);
       setReady(true);
@@ -177,8 +178,16 @@ export function useBookRenderer({
 
     void openBook().catch((error: unknown) => {
       if (cancelled || controller.signal.aborted) return;
-      const message = error instanceof Error ? error.message : "Could not open book";
-      useLibrary.setState({ error: message });
+      const detail = messageOf(error);
+      useLibrary.setState({
+        error:
+          detail === "Novus could not open this book"
+            ? detail
+            : `Novus could not open this book. ${detail}`,
+        view: "library",
+        activeBookId: null,
+        pendingLocator: null,
+      });
     });
 
     return () => {
@@ -198,7 +207,7 @@ export function useBookRenderer({
       viewRef.current = null;
       setReady(false);
     };
-  }, [activeBookId, storageRoot]);
+  }, [activeBookId]);
 
   useEffect(() => {
     const renderer = viewRef.current;

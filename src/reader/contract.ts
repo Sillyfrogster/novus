@@ -37,7 +37,7 @@ export type ReaderEvent =
 export type ReaderListener = (event: ReaderEvent) => void;
 
 export interface ReaderSession {
-  open(file: File): Promise<readonly TocItem[]>;
+  open(bookId: string): Promise<readonly TocItem[]>;
   navigate(destination: ReaderDestination): Promise<boolean>;
   turn(direction: "next" | "previous"): void;
   configure(presentation: ReaderPresentation): void;

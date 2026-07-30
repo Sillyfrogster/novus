@@ -35,7 +35,12 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
 
   return (
     <>
-      <div className={styles.scrim} onClick={onClose} />
+      <button
+        type="button"
+        className={styles.scrim}
+        aria-label="Close display settings"
+        onClick={onClose}
+      />
       <div className={styles.drawer}>
         <div className={styles.head}>
           <span className={styles.title}>Display</span>

@@ -239,8 +239,10 @@ export function Library({ dropping }: LibraryProps) {
                     </button>
                     {sortMenu && (
                       <>
-                        <div
+                        <button
+                          type="button"
                           className={styles.menuScrim}
+                          aria-label="Close sort menu"
                           onClick={() => setSortMenu(false)}
                         />
                         <div className={styles.sortMenu} role="menu">
@@ -415,8 +417,10 @@ export function Library({ dropping }: LibraryProps) {
 
       {menu && (
         <>
-          <div
+          <button
+            type="button"
             className={styles.menuScrim}
+            aria-label="Close book menu"
             onClick={() => setMenu(null)}
             onContextMenu={(e) => {
               e.preventDefault();

@@ -7,7 +7,6 @@ import styles from "./TitleBar.module.css";
 
 const appWindow = getCurrentWindow();
 
-/** Frameless-window titlebar: brand, contextual center label, theme + window controls. */
 export function TitleBar() {
   const appTheme = useLibrary((s) => s.appTheme);
   const toggleTheme = useLibrary((s) => s.toggleTheme);
@@ -23,8 +22,10 @@ export function TitleBar() {
         <span className={styles.wordmark}>NOVUS</span>
       </div>
 
-      <div className={styles.drag} data-tauri-drag-region onMouseDown={(e) => onDrag(e)}>
-        <span className={styles.center}>{view === "reader" ? "Reading" : "Library"}</span>
+      <div className={styles.drag} data-tauri-drag-region>
+        <span className={styles.center} data-tauri-drag-region>
+          {view === "reader" ? "Reading" : "Library"}
+        </span>
       </div>
 
       <div className={styles.controls}>
@@ -73,15 +74,3 @@ export function TitleBar() {
     </div>
   );
 }
-
-function onDrag(e: React.MouseEvent) {
-  // Only primary-button presses start a window drag; let double-click maximize.
-  if (e.buttons === 1) {
-    if (e.detail === 2) {
-      appWindow.toggleMaximize();
-    } else {
-      appWindow.startDragging();
-    }
-  }
-}
-

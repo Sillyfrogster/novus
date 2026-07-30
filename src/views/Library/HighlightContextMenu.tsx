@@ -54,7 +54,13 @@ export function HighlightContextMenu({
 
   return (
     <>
-      <div className={styles.scrim} onClick={onClose} onContextMenu={(e) => e.preventDefault()} />
+      <button
+        type="button"
+        className={styles.scrim}
+        aria-label="Close highlight menu"
+        onClick={onClose}
+        onContextMenu={(e) => e.preventDefault()}
+      />
       <div ref={ref} className={styles.menu} style={{ left: pos.left, top: pos.top, width: MENU_W }} role="menu">
         <button type="button" className={styles.item} onClick={run(onDetails)} role="menuitem">
           <Info size={15} strokeWidth={1.7} />

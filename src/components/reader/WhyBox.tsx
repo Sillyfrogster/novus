@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useDialog } from "../../lib/useDialog";
 import styles from "./WhyBox.module.css";
 
 interface WhyBoxProps {
@@ -11,6 +12,7 @@ interface WhyBoxProps {
 export function WhyBox({ onSave, onDismiss }: WhyBoxProps) {
   const [note, setNote] = useState("");
   const ref = useRef<HTMLInputElement>(null);
+  const dialogRef = useDialog(false);
 
   useEffect(() => {
     ref.current?.focus();
@@ -23,7 +25,11 @@ export function WhyBox({ onSave, onDismiss }: WhyBoxProps) {
   };
 
   return (
-    <div className={styles.wrap} role="dialog" aria-label="Add a note to this highlight">
+    <dialog
+      ref={dialogRef}
+      className={styles.wrap}
+      aria-label="Add a note to this highlight"
+    >
       <input
         ref={ref}
         className={styles.input}
@@ -44,6 +50,6 @@ export function WhyBox({ onSave, onDismiss }: WhyBoxProps) {
       <button type="button" className={styles.skip} onClick={onDismiss}>
         Skip
       </button>
-    </div>
+    </dialog>
   );
 }

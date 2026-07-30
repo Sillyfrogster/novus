@@ -1,7 +1,7 @@
 import { Check, Download, RotateCw, X } from "lucide-react";
-import { useEffect, useRef } from "react";
 
 import { CHANGELOG, compareVersions, type ChangeKind } from "../../lib/changelog";
+import { useDialog } from "../../lib/useDialog";
 import { useAppVersion } from "../../lib/version";
 import { useLibrary } from "../../store/library";
 import { useUpdate } from "../../store/update";
@@ -18,89 +18,78 @@ export function AboutPanel() {
   const close = useLibrary((s) => s.closeAbout);
   const highlightSince = useLibrary((s) => s.aboutHighlightSince);
   const version = useAppVersion();
-  const panelRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    panelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [close]);
+  const panelRef = useDialog();
 
   return (
-    <>
-      <div className={styles.backdrop} onClick={close} />
-      <aside
-        ref={panelRef}
-        className={styles.panel}
-        role="dialog"
-        aria-modal="true"
-        aria-label="About Novus"
-        tabIndex={-1}
-      >
-        <header className={styles.head}>
-          <div className={styles.brand}>
-            <Mark size={26} />
-            <div>
-              <div className={styles.wordmark}>NOVUS</div>
-              <div className={styles.version}>{version ? `Version ${version}` : " "}</div>
-            </div>
+    <dialog
+      ref={panelRef}
+      className={styles.panel}
+      aria-label="About Novus"
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
+      }}
+    >
+      <header className={styles.head}>
+        <div className={styles.brand}>
+          <Mark size={26} />
+          <div>
+            <div className={styles.wordmark}>NOVUS</div>
+            <div className={styles.version}>{version ? `Version ${version}` : " "}</div>
           </div>
-          <button
-            type="button"
-            className={styles.close}
-            onClick={close}
-            title="Close"
-            aria-label="Close"
-          >
-            <X size={16} strokeWidth={1.5} />
-          </button>
-        </header>
+        </div>
+        <button
+          type="button"
+          className={styles.close}
+          onClick={close}
+          title="Close"
+          aria-label="Close"
+        >
+          <X size={16} strokeWidth={1.5} />
+        </button>
+      </header>
 
-        <p className={styles.tagline}>
-          A quiet, careful home for the books you keep. Free to use, supported by readers who
-          choose to give.
-        </p>
+      <p className={styles.tagline}>
+        A quiet, careful home for the books you keep. Free to use, supported by readers who
+        choose to give.
+      </p>
 
-        <UpdateRow />
+      <UpdateRow />
 
-        <div className={styles.divider} />
+      <div className={styles.divider} />
 
-        <h2 className={styles.sectionTitle}>Release history</h2>
-        <ol className={styles.releases}>
-          {CHANGELOG.map((release) => {
-            const isNew = highlightSince
-              ? compareVersions(release.version, highlightSince) > 0
-              : false;
-            return (
-              <li
-                key={release.version}
-                className={`${styles.release} ${isNew ? styles.releaseNew : ""}`}
-              >
-                <div className={styles.releaseHead}>
-                  <span className={styles.releaseVersion}>{release.version}</span>
-                  <span className={styles.releaseDate}>{formatDate(release.date)}</span>
-                  {isNew && <span className={styles.newTag}>New</span>}
-                </div>
-                {release.title && <div className={styles.releaseTitle}>{release.title}</div>}
-                <ul className={styles.notes}>
-                  {release.notes.map((note) => (
-                    <li key={`${note.kind}-${note.text}`} className={styles.note}>
-                      <span className={styles.noteKind} data-kind={note.kind}>
-                        {KIND_LABEL[note.kind]}
-                      </span>
-                      <span className={styles.noteText}>{note.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            );
-          })}
-        </ol>
-      </aside>
-    </>
+      <h2 className={styles.sectionTitle}>Release history</h2>
+      <ol className={styles.releases}>
+        {CHANGELOG.map((release) => {
+          const isNew = highlightSince
+            ? compareVersions(release.version, highlightSince) > 0
+            : false;
+          return (
+            <li
+              key={release.version}
+              className={`${styles.release} ${isNew ? styles.releaseNew : ""}`}
+            >
+              <div className={styles.releaseHead}>
+                <span className={styles.releaseVersion}>{release.version}</span>
+                <span className={styles.releaseDate}>{formatDate(release.date)}</span>
+                {isNew && <span className={styles.newTag}>New</span>}
+              </div>
+              {release.title && <div className={styles.releaseTitle}>{release.title}</div>}
+              <ul className={styles.notes}>
+                {release.notes.map((note) => (
+                  <li key={`${note.kind}-${note.text}`} className={styles.note}>
+                    <span className={styles.noteKind} data-kind={note.kind}>
+                      {KIND_LABEL[note.kind]}
+                    </span>
+                    <span className={styles.noteText}>{note.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          );
+        })}
+      </ol>
+    </dialog>
   );
 }
 

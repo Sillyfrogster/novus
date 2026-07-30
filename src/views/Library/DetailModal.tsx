@@ -3,6 +3,7 @@ import { Check, Play, RotateCcw, Trash2, X } from "lucide-react";
 
 import { coverUrl } from "../../lib/assets";
 import { bookToc } from "../../lib/ipc";
+import { useDialog } from "../../lib/useDialog";
 import {
   copyText,
   fileStem,
@@ -109,7 +110,7 @@ export function DetailModal({
   const [toc, setToc] = useState<TocEntry[] | null>(null);
   const [tocExpanded, setTocExpanded] = useState(false);
   const [phase, setPhase] = useState<GrowPhase>("enter");
-  const modalRef = useRef<HTMLDivElement>(null);
+  const modalRef = useDialog();
 
   const highlights = useHighlights((s) => s.highlights);
   const colors = useHighlights((s) => s.colors);
@@ -161,40 +162,6 @@ export function DetailModal({
     return () => cancelAnimationFrame(id);
   }, []);
 
-  useEffect(() => {
-    const restoreTo = document.activeElement as HTMLElement | null;
-    modalRef.current?.focus();
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        requestClose();
-        return;
-      }
-      if (e.key !== "Tab" || !modalRef.current) return;
-      const focusable = modalRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      restoreTo?.focus?.();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Parse the chapter list lazily
   useEffect(() => {
     let active = true;
@@ -208,6 +175,7 @@ export function DetailModal({
 
   // Dismissals run the reverse animation, then unmount once it settles.
   const requestClose = () => {
+    if (phase === "closing") return;
     setPhase("closing");
     window.setTimeout(onClose, GROW_MS);
   };
@@ -229,19 +197,16 @@ export function DetailModal({
 
   return (
     <>
-      <div
-        className={styles.backdrop}
-        style={{ opacity: phase === "closing" ? 0 : 1 }}
-        onClick={requestClose}
-      />
-      <div
+      <dialog
         ref={modalRef}
-        tabIndex={-1}
         className={styles.modal}
         style={modalStyle}
-        role="dialog"
-        aria-modal="true"
         aria-label={book.title}
+        data-closing={phase === "closing"}
+        onCancel={(event) => {
+          event.preventDefault();
+          requestClose();
+        }}
       >
         <button type="button" className={styles.modalClose} onClick={requestClose} title="Close">
           <X size={14} strokeWidth={1.4} />
@@ -492,7 +457,7 @@ export function DetailModal({
             </div>
           )}
         </div>
-      </div>
+      </dialog>
 
       {menu && (
         <HighlightContextMenu

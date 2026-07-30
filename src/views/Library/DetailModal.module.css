@@ -1,12 +1,12 @@
-.backdrop {
-  position: fixed;
-  inset: 0;
+.modal::backdrop {
   background: rgba(6, 6, 8, 0.62);
   backdrop-filter: blur(3px);
-  z-index: 150;
-  cursor: pointer;
   animation: nvFade 0.24s ease both;
-  transition: opacity 0.24s ease;
+  transition: background 0.24s ease, backdrop-filter 0.24s ease;
+}
+.modal[data-closing="true"]::backdrop {
+  background: transparent;
+  backdrop-filter: blur(0);
 }
 .modal {
   position: fixed;
@@ -15,16 +15,22 @@
   transform: translate(-50%, -50%);
   width: min(1000px, calc(100vw - 120px));
   height: min(720px, calc(100vh - 80px));
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 16px;
   overflow: hidden;
   z-index: 151;
   box-shadow: 0 40px 100px -30px rgba(0, 0, 0, 0.8);
-  display: flex;
   transform-origin: 50% 50%;
   transition: transform 0.36s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.26s ease;
   will-change: transform, opacity;
+}
+.modal[open] {
+  display: flex;
 }
 
 @media (prefers-reduced-motion: reduce) {

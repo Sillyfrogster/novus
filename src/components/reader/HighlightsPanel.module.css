@@ -1,23 +1,28 @@
-.scrim {
-  position: absolute;
-  inset: 0;
+.panel::backdrop {
   background: rgba(0, 0, 0, 0.22);
-  z-index: 60;
 }
 
 .panel {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   bottom: 0;
+  right: auto;
   width: 340px;
+  max-width: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
   z-index: 61;
   background: var(--base);
+  border: 0;
   border-right: 1px solid var(--line);
   color: var(--ink);
-  display: flex;
   flex-direction: column;
   animation: nvSlide 0.26s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.panel[open] {
+  display: flex;
 }
 
 .head {

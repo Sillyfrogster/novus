@@ -1,5 +1,4 @@
-import { useEffect, useRef } from "react";
-
+import { useDialog } from "../lib/useDialog";
 import styles from "./ConfirmDialog.module.css";
 
 interface ConfirmDialogProps {
@@ -10,36 +9,29 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-/**
- * confirmation for irreversible actions.
- */
 export function ConfirmDialog({ title, body, confirmLabel, onConfirm, onCancel }: ConfirmDialogProps) {
-  const cancelRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    cancelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  const dialogRef = useDialog();
 
   return (
-    <>
-      <div className={styles.backdrop} onClick={onCancel} />
-      <div className={styles.dialog} role="dialog" aria-modal="true" aria-label={title}>
-        <h2 className={styles.title}>{title}</h2>
-        <p className={styles.body}>{body}</p>
-        <div className={styles.actions}>
-          <button type="button" ref={cancelRef} className={styles.cancel} onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="button" className={styles.confirm} onClick={onConfirm}>
-            {confirmLabel}
-          </button>
-        </div>
+    <dialog
+      ref={dialogRef}
+      className={styles.dialog}
+      aria-label={title}
+      onCancel={(event) => {
+        event.preventDefault();
+        onCancel();
+      }}
+    >
+      <h2 className={styles.title}>{title}</h2>
+      <p className={styles.body}>{body}</p>
+      <div className={styles.actions}>
+        <button type="button" autoFocus className={styles.cancel} onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" className={styles.confirm} onClick={onConfirm}>
+          {confirmLabel}
+        </button>
       </div>
-    </>
+    </dialog>
   );
 }

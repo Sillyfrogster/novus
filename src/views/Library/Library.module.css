@@ -661,6 +661,9 @@
 .menuScrim {
   position: fixed;
   inset: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   z-index: 200;
 }
 .menu {

@@ -476,7 +476,12 @@ export function Reader() {
 
       {tocOpen && (
         <>
-          <div className={styles.scrim} onClick={() => setTocOpen(false)} />
+          <button
+            type="button"
+            className={styles.scrim}
+            aria-label="Close table of contents"
+            onClick={() => setTocOpen(false)}
+          />
           <div className={styles.toc}>
             <div className={styles.tocHead}>
               Contents

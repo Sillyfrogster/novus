@@ -1,40 +1,60 @@
 <div align="center">
   <img src="docs/assets/novus-mark.svg" alt="Novus" width="110" height="97">
 
-  <h3>Novus</h3>
+  <h1>Novus</h1>
 
   <p>A desktop ebook reader for people who read a lot.</p>
 
-  <sub>Version 0.1.0 · early, pre-release</sub>
+  <p><a href="https://github.com/Sillyfrogster/novus/releases/latest"><strong>Download the latest release</strong></a></p>
 </div>
 
-## About
+Novus is the reader I wanted for myself: quiet, quick, and pleasant to spend time in. It's made for keeping a library, returning to unfinished books, and saving the lines worth remembering.
 
-Novus is a desktop ebook reader. Most readers ask you to pick a side: the quick ones tend to look dated, and the good-looking ones tend to run heavy. Novus is built to be both at once, fast to open and clean to sit in for a few hours.
+I'm building Novus on my own. It's still young, but the goal is simple: make a reader that feels cared for and gets better through regular use. EPUB is the first format it supports. I don't plan for it to be the last.
 
-It runs on your machine, offline. Your books and your place in them stay local. The core is Rust through Tauri, not a bundled browser, so it starts quickly and stays light while it is open.
+## Reading with Novus
 
-It is free to use. A paid tier (one-time, with an optional account) is planned later.
+Novus keeps your books on your computer and remembers where you left off. You can organize a library into collections, search it, and keep the books you are already reading close at hand.
 
-## Usage
+You can read page by page or in a continuous scroll, with a choice of typefaces, themes, and controls for making the page comfortable. Highlights can carry notes, return you to the original passage, and be copied or exported when you want them elsewhere.
 
-Download the latest build for your platform from the [Releases page](https://github.com/Sillyfrogster/novus/releases), then open it and add books from your disk. Your library lives locally; nothing about what you read leaves your machine.
+Reading insights show the shape of your habits over time, including time spent reading, pages read, pace, and streaks. They are there for curiosity, not pressure.
 
-## Built with
+## Download
 
-Tauri, Rust, React, TypeScript, and Vite. EPUBs are parsed and rendered by [foliate-js](https://github.com/johnfactotum/foliate-js) (MIT) by John Factotum, vendored under `vendor/` with its license kept in place.
+Novus builds are available for macOS, Windows, and Linux on the [Releases page](https://github.com/Sillyfrogster/novus/releases/latest).
 
-## Related repositories
+> [!NOTE]
+> Novus is under active development. Keep your original book files somewhere safe while it grows.
 
-- [novus-voice](https://github.com/Sillyfrogster/novus-voice) — the offline text-to-speech engine behind read-aloud. A separate GPL-licensed program that Novus runs alongside itself; prebuilt binaries from its releases are fetched automatically at build time (version pinned in `scripts/sidecar.mjs`).
-- [novus-voices](https://github.com/Sillyfrogster/novus-voices) — downloadable voice packs, published as GitHub releases and fetched by the app on demand.
+There is no account or cloud library. Your books, reading position, highlights, notes, and reading history stay on your computer. Reading works offline; Novus only goes online to check for updates.
 
-## License
+## Development
 
-Novus is licensed under the [MIT License](LICENSE).
+Novus is built with [Tauri 2](https://v2.tauri.app/), Rust, React, TypeScript, Vite, and Bun. EPUB support comes from [foliate-js](https://github.com/johnfactotum/foliate-js), which is vendored with its license in `vendor/`.
 
-The third-party components in `vendor/` keep their own licenses (foliate-js is MIT).
+To run it locally, install [Bun](https://bun.sh/), [Rust](https://www.rust-lang.org/tools/install), and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform.
 
-## Contact
+```bash
+git clone https://github.com/Sillyfrogster/novus.git
+cd novus
+bun install
+bun run tauri dev
+```
 
-[@Sillyfrogster](https://github.com/Sillyfrogster) on GitHub.
+Useful checks:
+
+```bash
+bun run build
+cd src-tauri && cargo test
+```
+
+Build a desktop installer from the project root with:
+
+```bash
+bun run tauri build
+```
+
+## Feedback
+
+If a book looks wrong, Novus loses your place, or something simply feels awkward, please [open an issue](https://github.com/Sillyfrogster/novus/issues). Those rough edges are often the most useful guide for what to work on next.

@@ -8,9 +8,14 @@ import {
 } from "../../lib/highlightColors";
 import { getReadingState, recordSession, saveReadingState } from "../../lib/ipc";
 import type { Highlight, HighlightColorKey } from "../../lib/types";
-import { NovusRenderer } from "../../reader/NovusRenderer";
+import { loadReaderFactory } from "../../reader/loadReader";
 import { ReadingSession } from "../../reader/readingSession";
-import type { RenderHighlight, SelectionDetail, TocItem } from "../../reader/types";
+import type {
+  ReaderSurface,
+  RenderHighlight,
+  SelectionDetail,
+  TocItem,
+} from "../../reader/types";
 import { useHighlights } from "../../store/highlights";
 import { useLibrary } from "../../store/library";
 import {
@@ -47,7 +52,7 @@ function resolveTocTarget(toc: TocItem[] | undefined, target: string): string {
   return flat.find((item) => hrefTail(item.href) === tail)?.href ?? target;
 }
 
-function applyLayout(renderer: NovusRenderer, settings: ReaderSettings): void {
+function applyLayout(renderer: ReaderSurface, settings: ReaderSettings): void {
   renderer.setFlow(settings.layout === "paged" ? "paginated" : "scrolled");
   renderer.setMaxInlineSize(settings.measure);
 }
@@ -144,7 +149,7 @@ export function useBookRenderer({
   revealChrome,
 }: UseBookRendererOptions) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<NovusRenderer | null>(null);
+  const viewRef = useRef<ReaderSurface | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSave = useRef<{ cfi: string | null; fraction: number } | null>(null);
   const lastMoveAt = useRef(0);
@@ -171,7 +176,7 @@ export function useBookRenderer({
     if (!currentBook) return;
 
     let cancelled = false;
-    let renderer: NovusRenderer | null = null;
+    let renderer: ReaderSurface | null = null;
     let loadedDocument: Document | null = null;
     const controller = new AbortController();
     const revealInDocument = () => revealChromeRef.current();
@@ -219,13 +224,15 @@ export function useBookRenderer({
     const openBook = async () => {
       const url = bookUrl(currentBook, storageRoot);
       if (!url || !hostRef.current || cancelled) return;
-      const response = await fetch(url, { signal: controller.signal });
-      if (!response.ok) throw new Error(`Could not open book: ${response.status}`);
-      const blob = await response.blob();
+      const bookFile = fetch(url, { signal: controller.signal }).then(async (response) => {
+        if (!response.ok) throw new Error(`Could not open book: ${response.status}`);
+        return response.blob();
+      });
+      const [createReader, blob] = await Promise.all([loadReaderFactory(), bookFile]);
       if (cancelled) return;
       const file = new File([blob], `book.${currentBook.format}`);
 
-      renderer = new NovusRenderer(hostRef.current);
+      renderer = createReader(hostRef.current);
       viewRef.current = renderer;
       renderer.on("relocate", onRelocate);
       renderer.on("load", onLoad);

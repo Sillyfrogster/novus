@@ -20,11 +20,6 @@ target/
 *.njsproj
 *.sln
 *.sw?
-*.md
-!README.md
-
-# toadmap stuff
-docs/design/
 
 # Local env
 .env

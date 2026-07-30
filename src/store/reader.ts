@@ -83,12 +83,6 @@ export const useReaderSettings = create<ReaderStore>((set, get) => ({
   },
 }));
 
-export const FONT_STACKS: Record<ReadFont, string> = {
-  serif: "'Lora', Georgia, 'Times New Roman', serif",
-  sans: "'Hanken Grotesk', system-ui, sans-serif",
-  modern: "'Source Serif 4', Georgia, serif",
-};
-
 export const FONT_LABELS: Record<ReadFont, string> = {
   serif: "Serif",
   sans: "Sans",

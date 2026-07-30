@@ -1,18 +1,20 @@
-/**
- * NovusRenderer.
- */
+import type {
+  ReaderDestination,
+  ReaderEvent,
+  ReaderListener,
+  ReaderPresentation,
+  ReaderSession,
+} from "./contract";
 import { getVisibleRange, uncollapse, type RectMapper } from "./geometry";
 import { unwrapHighlightMarks, wrapRangeInMarks } from "./highlightMarks";
+import { openBook } from "./openBook";
+import { readerCss } from "./presentation";
 import type {
   BookModel,
   BookSection,
   Flow,
-  LoadDetail,
-  ReaderSurface,
-  RelocateDetail,
   RelocateReason,
   RenderHighlight,
-  SelectionDetail,
   TocItem,
 } from "./types";
 
@@ -88,13 +90,12 @@ const IFRAME_STYLE: Partial<CSSStyleDeclaration> = {
   height: "100%",
 };
 
-export class NovusRenderer implements ReaderSurface {
+export class NovusRenderer implements ReaderSession {
   maxInlineSize = 720;
   maxColumnCount = 2;
   gapPercent = 0.07;
   scrollMargin = 48;
 
-  #host: HTMLElement;
   #container: HTMLDivElement;
   #element: HTMLDivElement;
   #iframe!: HTMLIFrameElement;
@@ -120,15 +121,13 @@ export class NovusRenderer implements ReaderSurface {
   #observer: ResizeObserver;
   #scrollTimer: ReturnType<typeof setTimeout> | null = null;
   #suppressScroll = false;
-  #relocateCb: ((d: RelocateDetail) => void) | null = null;
-  #loadCb: ((d: LoadDetail) => void) | null = null;
-  #selectionCb: ((d: SelectionDetail | null) => void) | null = null;
+  #listeners = new Set<ReaderListener>();
+  #disposed = false;
 
   #highlights: RenderHighlight[] = [];
   #newHighlightId: string | null = null;
 
   constructor(host: HTMLElement) {
-    this.#host = host;
     this.#container = document.createElement("div");
     this.#element = document.createElement("div");
 
@@ -141,7 +140,7 @@ export class NovusRenderer implements ReaderSurface {
     });
     Object.assign(this.#element.style, ELEMENT_STYLE);
     this.#container.append(this.#element);
-    this.#host.append(this.#container);
+    host.append(this.#container);
 
     this.#observer = new ResizeObserver(() => this.#render("resize"));
     this.#observer.observe(this.#container);
@@ -157,43 +156,32 @@ export class NovusRenderer implements ReaderSurface {
     this.#scrollTimer = setTimeout(() => this.#afterScroll("scroll"), SCROLL_SETTLE_MS);
   }
 
-  get toc(): TocItem[] {
-    return this.#toc;
+  subscribe(listener: ReaderListener): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
   }
 
-  get book(): BookModel | null {
-    return this.#book;
+  #emit(event: ReaderEvent): void {
+    if (this.#disposed) return;
+    for (const listener of this.#listeners) listener(event);
   }
 
-  on(type: "relocate", cb: (d: RelocateDetail) => void): void;
-  on(type: "load", cb: (d: LoadDetail) => void): void;
-  on(type: "selection", cb: (d: SelectionDetail | null) => void): void;
-  on(type: "relocate" | "load" | "selection", cb: (d: never) => void): void {
-    if (type === "relocate") this.#relocateCb = cb as (d: RelocateDetail) => void;
-    else if (type === "load") this.#loadCb = cb as (d: LoadDetail) => void;
-    else this.#selectionCb = cb as (d: SelectionDetail | null) => void;
-  }
+  async open(file: File): Promise<readonly TocItem[]> {
+    if (this.#disposed) throw new Error("Reader is closed");
+    if (this.#book) throw new Error("Reader is already open");
 
-  off(type: "relocate", cb: (d: RelocateDetail) => void): void;
-  off(type: "load", cb: (d: LoadDetail) => void): void;
-  off(type: "selection", cb: (d: SelectionDetail | null) => void): void;
-  off(type: "relocate" | "load" | "selection", cb: (d: never) => void): void {
-    if (type === "relocate" && this.#relocateCb === cb) this.#relocateCb = null;
-    else if (type === "load" && this.#loadCb === cb) this.#loadCb = null;
-    else if (type === "selection" && this.#selectionCb === cb) this.#selectionCb = null;
-  }
-
-  async open(file: File): Promise<void> {
-    const { openBook } = await import("./openBook");
-    const book = await openBook(file);
-    this.#book = book;
-    this.#sections = book.sections;
-    this.#toc = book.toc ?? [];
-
-    const [{ SectionProgress, TOCProgress }, CFI] = await Promise.all([
+    const [book, { SectionProgress, TOCProgress }, CFI] = await Promise.all([
+      openBook(file),
       import("../../vendor/foliate-js/progress.js"),
       import("../../vendor/foliate-js/epubcfi.js"),
     ]);
+    if (this.#disposed) {
+      book.destroy?.();
+      throw new Error("Reader is closed");
+    }
+    this.#book = book;
+    this.#sections = book.sections;
+    this.#toc = book.toc ?? [];
     this.#cfi = CFI as typeof import("../../vendor/foliate-js/epubcfi.js");
 
     const ids = book.sections.map((s) => String(s.id));
@@ -202,6 +190,7 @@ export class NovusRenderer implements ReaderSurface {
     const getFragment = book.getTOCFragment.bind(book);
     this.#tocProgress = new TOCProgress();
     await this.#tocProgress.init({ toc: book.toc ?? [], ids, splitHref, getFragment });
+    return this.#toc;
   }
 
   // nav
@@ -237,41 +226,52 @@ export class NovusRenderer implements ReaderSurface {
     }
   }
 
-  async goTo(target: string): Promise<boolean> {
+  async navigate(destination: ReaderDestination): Promise<boolean> {
+    if (destination.kind === "start") return this.#goToStart();
+    if (destination.kind === "highlight") return this.#goToHighlight(destination.value);
+    return this.#goToTarget(destination.value);
+  }
+
+  async #goToTarget(target: string): Promise<boolean> {
     const resolved = await this.#resolve(target);
     if (!resolved || !this.#canGoToIndex(resolved.index)) return false;
     await this.#display(resolved.index, resolved.anchor ?? 0, "navigation");
     return true;
   }
 
-  async resetPosition(): Promise<void> {
+  async #goToStart(): Promise<boolean> {
     const index = this.#sections.findIndex((s) => s.linear !== "no");
+    const target = index < 0 ? 0 : index;
+    if (!this.#canGoToIndex(target)) return false;
     this.#anchor = 0;
-    await this.#display(index < 0 ? 0 : index, 0, "navigation");
+    await this.#display(target, 0, "navigation");
+    return true;
   }
 
-  next(): void {
-    void this.#turnPage(1);
-  }
-  prev(): void {
-    void this.#turnPage(-1);
+  turn(direction: "next" | "previous"): void {
+    void this.#turnPage(direction === "next" ? 1 : -1);
   }
 
-  setFlow(flow: Flow): void {
+  configure(presentation: ReaderPresentation): void {
+    this.#setFlow(presentation.layout === "paged" ? "paginated" : "scrolled");
+    this.#setMaxInlineSize(presentation.measure);
+    this.#setStyles(readerCss(presentation));
+  }
+
+  #setFlow(flow: Flow): void {
     if (flow === this.#flow) return;
     this.#flow = flow;
     this.#container.style.overflow = flow === "scrolled" ? "auto" : "hidden";
     if (this.#iframe?.contentDocument) this.#render("resize");
   }
 
-  /** Set the target column / content width */
-  setMaxInlineSize(px: number): void {
+  #setMaxInlineSize(px: number): void {
     if (px === this.maxInlineSize) return;
     this.maxInlineSize = px;
     if (this.#iframe?.contentDocument) this.#render("resize");
   }
 
-  setStyles(css: string): void {
+  #setStyles(css: string): void {
     this.#styles = css;
     if (this.#styleEl) this.#styleEl.textContent = css;
     const doc = this.#iframe?.contentDocument;
@@ -281,8 +281,8 @@ export class NovusRenderer implements ReaderSurface {
     }
   }
 
-  setHighlights(highlights: RenderHighlight[], newId?: string): void {
-    this.#highlights = highlights;
+  replaceHighlights(highlights: readonly RenderHighlight[], newId?: string): void {
+    this.#highlights = [...highlights];
     this.#newHighlightId = newId ?? null;
     const doc = this.#iframe?.contentDocument;
     if (!doc) return;
@@ -295,11 +295,10 @@ export class NovusRenderer implements ReaderSurface {
 
   clearSelection(): void {
     this.#iframe?.contentDocument?.getSelection()?.removeAllRanges();
-    this.#selectionCb?.(null);
+    this.#emit({ type: "selection", detail: null });
   }
 
-  /** Navigate to a highlight by CFI. */
-  async goToHighlight(cfi: string): Promise<boolean> {
+  async #goToHighlight(cfi: string): Promise<boolean> {
     const CFI = this.#cfi;
     if (!CFI) return false;
     try {
@@ -314,16 +313,16 @@ export class NovusRenderer implements ReaderSurface {
     }
   }
 
-  destroy(): void {
+  dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
     this.#observer.disconnect();
     if (this.#scrollTimer) clearTimeout(this.#scrollTimer);
     this.#sections[this.#index]?.unload?.();
     this.#book?.destroy?.();
     this.#container.remove();
     this.#book = null;
-    this.#relocateCb = null;
-    this.#loadCb = null;
-    this.#selectionCb = null;
+    this.#listeners.clear();
   }
 
   // display sections
@@ -417,32 +416,46 @@ export class NovusRenderer implements ReaderSurface {
     this.#handleLinks(doc);
     this.#bindSelection(doc);
     this.#renderHighlights(doc);
-    this.#loadCb?.({ doc, index: this.#index });
   }
 
   // selection capture
 
   #bindSelection(doc: Document): void {
-    doc.addEventListener("mousedown", () => this.#selectionCb?.(null));
+    doc.addEventListener("mousemove", () => this.#emit({ type: "activity" }));
+    doc.addEventListener("mousedown", () =>
+      this.#emit({ type: "selection", detail: null }),
+    );
     doc.addEventListener("mouseup", () => this.#reportSelection(doc));
     doc.addEventListener("keyup", () => this.#reportSelection(doc));
   }
 
   #reportSelection(doc: Document): void {
-    const cb = this.#selectionCb;
-    if (!cb) return;
     const sel = doc.getSelection();
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return cb(null);
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+      this.#emit({ type: "selection", detail: null });
+      return;
+    }
     const text = sel.toString().replace(/\s+/g, " ").trim();
-    if (!text) return cb(null);
+    if (!text) {
+      this.#emit({ type: "selection", detail: null });
+      return;
+    }
     const range = sel.getRangeAt(0);
     const r = range.getBoundingClientRect();
     const fr = this.#iframe.getBoundingClientRect();
-    cb({
-      text,
-      cfi: this.#getCFI(range),
-      sectionIndex: this.#index,
-      rect: { top: fr.top + r.top, bottom: fr.top + r.bottom, left: fr.left + r.left, right: fr.left + r.right },
+    this.#emit({
+      type: "selection",
+      detail: {
+        text,
+        cfi: this.#getCFI(range),
+        sectionIndex: this.#index,
+        rect: {
+          top: fr.top + r.top,
+          bottom: fr.top + r.bottom,
+          left: fr.left + r.left,
+          right: fr.left + r.right,
+        },
+      },
     });
   }
 
@@ -485,7 +498,7 @@ export class NovusRenderer implements ReaderSurface {
       const raw = a.getAttribute("href")!;
       const href = section?.resolveHref?.(raw) ?? raw;
       if (book?.isExternal?.(href)) return; // no-op for now. TODO: 0.3.0
-      void this.goTo(href);
+      void this.#goToTarget(href);
     });
   }
 
@@ -728,12 +741,15 @@ export class NovusRenderer implements ReaderSurface {
       const tocItem = this.#tocProgress?.getProgress(this.#index, range) ?? null;
       const cfi = this.#getCFI(range);
       const loc = progress?.location;
-      this.#relocateCb?.({
-        fraction: progress?.fraction ?? fractionInSection,
-        cfi,
-        tocItem,
-        location: loc ? { current: loc.current, total: loc.total } : null,
-        reason: RELOCATE_REASON[reason],
+      this.#emit({
+        type: "relocate",
+        detail: {
+          fraction: progress?.fraction ?? fractionInSection,
+          cfi,
+          tocItem,
+          location: loc ? { current: loc.current, total: loc.total } : null,
+          reason: RELOCATE_REASON[reason],
+        },
       });
     } catch (e) {
       console.warn("NovusRenderer: relocate reporting failed", e);

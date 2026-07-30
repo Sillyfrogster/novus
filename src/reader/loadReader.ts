@@ -1,6 +1,4 @@
-import type { ReaderSurface } from "./types";
-
-export type ReaderFactory = (host: HTMLElement) => ReaderSurface;
+import type { ReaderFactory } from "./contract";
 
 export async function loadReaderFactory(): Promise<ReaderFactory> {
   const { NovusRenderer } = await import("./NovusRenderer");

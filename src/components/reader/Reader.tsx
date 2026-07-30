@@ -69,8 +69,8 @@ export function Reader() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (settingsOpen || tocOpen || panelOpen || selection || whyForId) return;
-      if (e.key === "ArrowRight") viewRef.current?.next();
-      else if (e.key === "ArrowLeft") viewRef.current?.prev();
+      if (e.key === "ArrowRight") viewRef.current?.turn("next");
+      else if (e.key === "ArrowLeft") viewRef.current?.turn("previous");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -110,7 +110,7 @@ export function Reader() {
 
   const goToToc = (href: string) => {
     setTocOpen(false);
-    viewRef.current?.goTo(href).catch(() => {});
+    viewRef.current?.navigate({ kind: "target", value: href }).catch(() => {});
   };
 
   const onPickColor = async (color: HighlightColorKey) => {
@@ -141,7 +141,7 @@ export function Reader() {
 
   const jumpToHighlight = (cfi: string) => {
     setPanelOpen(false);
-    viewRef.current?.goToHighlight(cfi).catch(() => {});
+    viewRef.current?.navigate({ kind: "highlight", value: cfi }).catch(() => {});
   };
 
   return (
@@ -194,7 +194,7 @@ export function Reader() {
               type="button"
               aria-label="Previous page"
               className={`${styles.navBtn} ${styles.navPrev} ${chromeHidden ? styles.hidden : ""}`}
-              onClick={() => viewRef.current?.prev()}
+              onClick={() => viewRef.current?.turn("previous")}
             >
               <ChevronLeft size={22} strokeWidth={1.8} />
             </button>
@@ -202,7 +202,7 @@ export function Reader() {
               type="button"
               aria-label="Next page"
               className={`${styles.navBtn} ${styles.navNext} ${chromeHidden ? styles.hidden : ""}`}
-              onClick={() => viewRef.current?.next()}
+              onClick={() => viewRef.current?.turn("next")}
             >
               <ChevronRight size={22} strokeWidth={1.8} />
             </button>
@@ -211,7 +211,12 @@ export function Reader() {
       </div>
 
       <div className={`${styles.botbar} ${chromeHidden ? styles.hidden : ""}`}>
-        <button type="button" className={styles.iconBtn} onClick={() => viewRef.current?.prev()} title="Previous">
+        <button
+          type="button"
+          className={styles.iconBtn}
+          onClick={() => viewRef.current?.turn("previous")}
+          title="Previous"
+        >
           <ChevronLeft size={16} strokeWidth={1.8} />
         </button>
         <span className={styles.pageLabel}>{pageLabel}</span>
@@ -219,7 +224,12 @@ export function Reader() {
           <div className={styles.progressFill} style={{ width: `${pct}%` }} />
         </div>
         <span className={styles.pct}>{pct}%</span>
-        <button type="button" className={styles.iconBtn} onClick={() => viewRef.current?.next()} title="Next">
+        <button
+          type="button"
+          className={styles.iconBtn}
+          onClick={() => viewRef.current?.turn("next")}
+          title="Next"
+        >
           <ChevronRight size={16} strokeWidth={1.8} />
         </button>
       </div>

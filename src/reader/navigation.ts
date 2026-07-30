@@ -1,3 +1,4 @@
+import type { ReaderSession } from "./contract";
 import type { TocItem } from "./types";
 
 function fileName(href: string): string {
@@ -17,4 +18,21 @@ export function resolveContentsTarget(
   }
 
   return target;
+}
+
+export async function restoreReaderPosition(
+  reader: ReaderSession,
+  contents: readonly TocItem[],
+  target: string | null,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (signal?.aborted) return false;
+
+  if (target) {
+    const resolved = resolveContentsTarget(contents, target);
+    if (await reader.navigate({ kind: "target", value: resolved })) return true;
+  }
+
+  if (signal?.aborted) return false;
+  return reader.navigate({ kind: "start" });
 }

@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { resolveContentsTarget } from "../src/reader/navigation";
+import {
+  resolveContentsTarget,
+  restoreReaderPosition,
+} from "../src/reader/navigation";
 import type { TocItem } from "../src/reader/types";
+import { MemoryReaderSession } from "./fakes/MemoryReaderSession";
 
 const contents: TocItem[] = [
   {
@@ -39,5 +43,47 @@ describe("reader contents navigation", () => {
     expect(resolveContentsTarget(contents, "missing.xhtml")).toBe(
       "missing.xhtml",
     );
+  });
+
+  test("restores a nested contents target through the reader session", async () => {
+    const reader = new MemoryReaderSession(contents);
+
+    expect(
+      await restoreReaderPosition(reader, contents, "chapter-02.xhtml#start"),
+    ).toBe(true);
+    expect(reader.destinations).toEqual([
+      {
+        kind: "target",
+        value: "OPS/chapters/chapter-02.xhtml#start",
+      },
+    ]);
+  });
+
+  test("starts at the beginning when a saved target is stale", async () => {
+    const reader = new MemoryReaderSession(contents);
+
+    expect(
+      await restoreReaderPosition(reader, contents, "missing.xhtml"),
+    ).toBe(true);
+    expect(reader.destinations).toEqual([
+      { kind: "target", value: "missing.xhtml" },
+      { kind: "start" },
+    ]);
+  });
+
+  test("does not fall back after the reader closes", async () => {
+    const reader = new MemoryReaderSession(contents);
+    const controller = new AbortController();
+    controller.abort();
+
+    expect(
+      await restoreReaderPosition(
+        reader,
+        contents,
+        "missing.xhtml",
+        controller.signal,
+      ),
+    ).toBe(false);
+    expect(reader.destinations).toEqual([]);
   });
 });

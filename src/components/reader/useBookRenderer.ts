@@ -10,7 +10,7 @@ import type {
   ReaderSession,
 } from "../../reader/contract";
 import { loadReaderFactory } from "../../reader/loadReader";
-import { resolveContentsTarget } from "../../reader/navigation";
+import { restoreReaderPosition } from "../../reader/navigation";
 import { ReadingSession } from "../../reader/readingSession";
 import type { RenderHighlight, SelectionDetail, TocItem } from "../../reader/types";
 import { useHighlights } from "../../store/highlights";
@@ -158,23 +158,16 @@ export function useBookRenderer({
 
       const pending = useLibrary.getState().consumePendingLocator();
       if (pending) {
-        const target = resolveContentsTarget(contents, pending);
-        const reached = await renderer.navigate({ kind: "target", value: target });
-        if (cancelled) return;
-        if (!reached) await renderer.navigate({ kind: "start" });
+        await restoreReaderPosition(renderer, contents, pending, controller.signal);
       } else {
         const saved = await getReadingState(currentBook.id);
         if (cancelled) return;
-        if (saved?.locator) {
-          const reached = await renderer.navigate({
-            kind: "target",
-            value: saved.locator,
-          });
-          if (cancelled) return;
-          if (!reached) await renderer.navigate({ kind: "start" });
-        } else {
-          await renderer.navigate({ kind: "start" });
-        }
+        await restoreReaderPosition(
+          renderer,
+          contents,
+          saved?.locator ?? null,
+          controller.signal,
+        );
       }
       if (cancelled) return;
       restored.current = true;

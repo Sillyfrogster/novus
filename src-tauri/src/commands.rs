@@ -5,7 +5,6 @@ use tauri::State;
 use crate::db::{now_seconds, Book, Collection, Highlight, InsightsData, ReadingState};
 use crate::error::AppResult;
 use crate::import::{import_paths, read_epub_toc, ImportSummary, TocEntry};
-use crate::voice::types::{InstalledPack, PackManifest, SynthesisResult};
 use crate::{Novus, ZoomGuard};
 
 /// Every book in the library, newest first.
@@ -214,62 +213,4 @@ pub fn remove_book(state: State<'_, Novus>, id: String) -> AppResult<()> {
         }
     }
     state.db.delete_book(&id)
-}
-
-// voice / TTS
-
-/// Downloadable voice packs from the hosted registry.
-#[tauri::command]
-pub async fn fetch_voice_registry(state: State<'_, Novus>) -> AppResult<Vec<PackManifest>> {
-    let voice = state.voice.clone();
-    tauri::async_runtime::spawn_blocking(move || voice.fetch_registry())
-        .await
-        .map_err(|e| crate::error::AppError::Other(e.to_string()))?
-}
-
-/// Voice packs installed under managed storage.
-#[tauri::command]
-pub fn list_voice_packs(state: State<'_, Novus>) -> AppResult<Vec<InstalledPack>> {
-    state.voice.list_installed()
-}
-
-/// Download, verify, and install one pack. Emits `voice-pack-progress`.
-#[tauri::command]
-pub async fn download_voice_pack(
-    app: tauri::AppHandle,
-    state: State<'_, Novus>,
-    manifest: PackManifest,
-) -> AppResult<()> {
-    let voice = state.voice.clone();
-    tauri::async_runtime::spawn_blocking(move || voice.download(&app, &manifest))
-        .await
-        .map_err(|e| crate::error::AppError::Other(e.to_string()))?
-}
-
-#[tauri::command]
-pub fn delete_voice_pack(state: State<'_, Novus>, pack_id: String) -> AppResult<()> {
-    state.voice.delete(&pack_id)
-}
-
-/// Synthesize one sentence: PCM + word timings from the voice engine.
-#[tauri::command]
-pub async fn synthesize_sentence(
-    state: State<'_, Novus>,
-    pack_id: String,
-    voice_id: String,
-    text: String,
-    speed: f32,
-) -> AppResult<SynthesisResult> {
-    let voice = state.voice.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        voice.synthesize(&pack_id, &voice_id, &text, speed)
-    })
-    .await
-    .map_err(|e| crate::error::AppError::Other(e.to_string()))?
-}
-
-/// Stop the voice engine and reclaim its memory.
-#[tauri::command]
-pub fn tts_shutdown(state: State<'_, Novus>) {
-    state.voice.shutdown();
 }

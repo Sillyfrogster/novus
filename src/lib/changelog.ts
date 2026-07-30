@@ -19,20 +19,10 @@ export interface Release {
 /** Newest first. Add a new entry at the top each release. */
 export const CHANGELOG: Release[] = [
   {
-    version: "0.3.1",
-    date: "2026-07-05",
-    title: "A quieter launch",
-    notes: [
-      { kind: "fixed", text: "A stray console window no longer flashes open when a book is read aloud." },
-    ],
-  },
-  {
     version: "0.3.0",
     date: "2026-07-05",
-    title: "Listen, highlight, look back",
+    title: "Highlight and look back",
     notes: [
-      { kind: "new", text: "Have a book read aloud. Start from any page and the words highlight as they're spoken." },
-      { kind: "new", text: "Download a voice pack, pick a voice, and set the reading speed to your taste." },
       { kind: "new", text: "Highlight passages as you read. Pick a color, add a note on why it caught you, and they hold their place as the book reflows." },
       { kind: "new", text: "A highlights panel grouped by chapter, so you can jump straight to any passage. Copy one, save it as an image, or export a book's highlights to Markdown or Obsidian." },
       { kind: "new", text: "Insights: your reading time, pages read, current streak, and pace, with a day-by-day view of the last month." },

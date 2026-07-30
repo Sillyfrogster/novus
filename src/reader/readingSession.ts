@@ -38,8 +38,7 @@ export class ReadingSession {
     for (const event of this.#events) {
       const dwellMs = Math.min(event.tMs - lastT, GAP_CAP_MS);
       activeMs += dwellMs;
-      const isReadingMotion =
-        event.reason === "page" || event.reason === "scroll" || event.reason === "tts";
+      const isReadingMotion = event.reason === "page" || event.reason === "scroll";
       if (isReadingMotion && event.fraction > lastFraction && dwellMs >= MIN_READ_DWELL_MS) {
         readDwells.push(dwellMs);
       }

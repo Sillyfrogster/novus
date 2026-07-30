@@ -31,23 +31,11 @@ const RELOCATE_REASON: Record<ScrollReason, RelocateReason> = {
 /** Settle delay before a user scroll in scrolled flow is reported as a relocate. */
 const SCROLL_SETTLE_MS = 150;
 
-/** Treat our own marks (highlights, TTS follow-along) as transparent to CFI computation */
-const cfiFilter = (node: Node): number => {
-  if (node.nodeType !== 1) return NodeFilter.FILTER_ACCEPT;
-  const classList = (node as Element).classList;
-  return classList?.contains("nv-hl") ||
-    classList?.contains("nv-tts") ||
-    classList?.contains("nv-tts-w")
+/** Ignore highlight wrappers when saving positions */
+const cfiFilter = (node: Node): number =>
+  node.nodeType === 1 && (node as Element).classList?.contains("nv-hl")
     ? NodeFilter.FILTER_SKIP
     : NodeFilter.FILTER_ACCEPT;
-};
-
-/** Realm-safe Range check. */
-const isRangeLike = (value: unknown): value is Range =>
-  typeof value === "object" &&
-  value !== null &&
-  "startContainer" in value &&
-  "collapsed" in value;
 
 const setStylesImportant = (el: HTMLElement, styles: Record<string, string>) => {
   for (const [k, v] of Object.entries(styles)) el.style.setProperty(k, v, "important");
@@ -315,73 +303,6 @@ export class NovusRenderer implements ReaderSurface {
       console.warn(`NovusRenderer: could not navigate to highlight ${cfi}`, e);
       return false;
     }
-  }
-
-  get sectionIndex(): number {
-    return this.#index;
-  }
-
-  get contentDocument(): Document | null {
-    return this.#iframe?.contentDocument ?? null;
-  }
-
-  cfiFromRange(range: Range): string | null {
-    return this.#getCFI(range);
-  }
-
-  /**
-   * Resolve a CFI to a Range in the currently mounted section, or null.
-   */
-  rangeFromCfi(cfi: string): Range | null {
-    const doc = this.#iframe?.contentDocument;
-    const CFI = this.#cfi;
-    if (!doc || !CFI) return null;
-    try {
-      const parts = CFI.parse(cfi);
-      const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
-      if (index !== this.#index) return null;
-      const anchor = CFI.toRange(doc, parts, cfiFilter);
-      return isRangeLike(anchor) ? (anchor as Range) : null;
-    } catch {
-      return null;
-    }
-  }
-
-  visibleRange(): Range | null {
-    try {
-      return this.#getVisibleRange();
-    } catch {
-      return null;
-    }
-  }
-
-  /** True when any part of the range sits inside the current viewport. */
-  isRangeVisible(range: Range): boolean {
-    const rect = (uncollapse(range) as Range | Element | null)?.getBoundingClientRect?.();
-    if (!rect || (rect.width === 0 && rect.height === 0)) return false;
-    const mapped = this.#rectMapper()(rect);
-    const margin = this.#flow === "scrolled" ? this.#margin : 0;
-    return mapped.right > this.#start + margin && mapped.left < this.#end - margin;
-  }
-
-  /** Bring a range into view as reading motion (auto page-turn / follow scroll). */
-  async revealRange(range: Range): Promise<void> {
-    const rect = (uncollapse(range) as Range | Element | null)?.getBoundingClientRect?.();
-    if (!rect) return;
-    const mapped = this.#rectMapper()(rect);
-    if (this.#flow === "scrolled") {
-      await this.#scrollToOffset(Math.max(0, mapped.left - this.#margin), "page");
-    } else {
-      await this.#scrollToPage(Math.floor(mapped.left / this.#containerSize) + (this.#rtl ? -1 : 1), "page");
-    }
-  }
-
-  /** Advance to the next linear section (chapter crossing during playback). */
-  async displayNextSection(): Promise<boolean> {
-    const index = this.#adjacentIndex(1);
-    if (index == null) return false;
-    await this.#display(index, 0, "turn");
-    return true;
   }
 
   destroy(): void {

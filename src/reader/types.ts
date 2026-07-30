@@ -8,7 +8,7 @@ export interface TocItem {
   subitems?: TocItem[];
 }
 
-export type RelocateReason = "page" | "scroll" | "jump" | "layout" | "tts";
+export type RelocateReason = "page" | "scroll" | "jump" | "layout";
 
 export interface RelocateDetail {
   fraction: number;

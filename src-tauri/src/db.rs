@@ -141,19 +141,25 @@ fn book_from_row(r: &rusqlite::Row) -> rusqlite::Result<Book> {
 }
 
 impl Db {
-    pub fn open(path: &Path) -> AppResult<Self> {
+    pub fn open<F>(path: &Path, remove_legacy_voice_data: F) -> AppResult<Self>
+    where
+        F: FnOnce() -> AppResult<()>,
+    {
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         let db = Self {
             conn: Mutex::new(conn),
         };
-        db.migrate()?;
+        db.migrate(remove_legacy_voice_data)?;
         Ok(db)
     }
 
     /// Idempotent schema migrations keyed off SQLite's `user_version`.
-    fn migrate(&self) -> AppResult<()> {
+    fn migrate<F>(&self, remove_legacy_voice_data: F) -> AppResult<()>
+    where
+        F: FnOnce() -> AppResult<()>,
+    {
         let conn = self.conn.lock().expect("db mutex poisoned");
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
 
@@ -246,6 +252,11 @@ impl Db {
                  CREATE INDEX idx_sessions_book ON reading_sessions(book_id);
                  PRAGMA user_version = 5;",
             )?;
+        }
+
+        if version < 6 {
+            remove_legacy_voice_data()?;
+            conn.execute_batch("PRAGMA user_version = 6;")?;
         }
 
         Ok(())
@@ -692,8 +703,17 @@ impl Db {
                  section_index, location, color, note, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             rusqlite::params![
-                h.id, h.book_id, h.cfi, h.text, h.chapter_label, h.chapter_href,
-                h.section_index, h.location, h.color, h.note, h.created_at,
+                h.id,
+                h.book_id,
+                h.cfi,
+                h.text,
+                h.chapter_label,
+                h.chapter_href,
+                h.section_index,
+                h.location,
+                h.color,
+                h.note,
+                h.created_at,
             ],
         )?;
         Ok(())
@@ -722,5 +742,61 @@ impl Db {
         let conn = self.conn.lock().expect("db mutex poisoned");
         conn.execute("DELETE FROM highlights WHERE id = ?1", [id])?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    #[test]
+    fn legacy_voice_cleanup_runs_once() {
+        let root = std::env::temp_dir().join(format!(
+            "novus-voice-cleanup-{}-{}",
+            std::process::id(),
+            now_seconds()
+        ));
+        let db_path = root.join("novus.db");
+        let voice_path = root.join("voice-packs");
+        std::fs::create_dir_all(&voice_path).unwrap();
+        std::fs::write(voice_path.join("pack.zip.part"), b"partial").unwrap();
+
+        let cleanup_calls = AtomicUsize::new(0);
+        {
+            let db = Db::open(&db_path, || {
+                cleanup_calls.fetch_add(1, Ordering::Relaxed);
+                std::fs::remove_dir_all(&voice_path)?;
+                Ok(())
+            })
+            .unwrap();
+            drop(db);
+        }
+
+        assert_eq!(cleanup_calls.load(Ordering::Relaxed), 1);
+        assert!(!voice_path.exists());
+
+        std::fs::create_dir_all(&voice_path).unwrap();
+        {
+            let db = Db::open(&db_path, || {
+                cleanup_calls.fetch_add(1, Ordering::Relaxed);
+                std::fs::remove_dir_all(&voice_path)?;
+                Ok(())
+            })
+            .unwrap();
+            drop(db);
+        }
+
+        assert_eq!(cleanup_calls.load(Ordering::Relaxed), 1);
+        assert!(voice_path.exists());
+
+        let connection = Connection::open(&db_path).unwrap();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 6);
+        drop(connection);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

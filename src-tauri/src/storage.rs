@@ -39,8 +39,13 @@ impl Storage {
         self.root.join("covers")
     }
 
-    pub fn voice_packs_dir(&self) -> PathBuf {
-        self.root.join("voice-packs")
+    pub fn remove_legacy_voice_data(&self) -> AppResult<()> {
+        let path = self.root.join("voice-packs");
+        match std::fs::remove_dir_all(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
     }
 
     /// Absolute path for a managed book file given its stored relative path.

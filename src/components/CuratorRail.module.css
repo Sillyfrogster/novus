@@ -180,9 +180,22 @@
 .collDelete:hover {
   color: var(--danger);
 }
-.newInput {
+.newField {
+  display: block;
   width: calc(100% - 20px);
   margin: 6px 10px 0;
+}
+.newLabel {
+  display: block;
+  margin-bottom: 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.newInput {
+  width: 100%;
   height: 34px;
   background: var(--surface);
   border: 1px solid var(--line);

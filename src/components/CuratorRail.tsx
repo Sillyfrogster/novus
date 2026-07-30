@@ -141,18 +141,21 @@ export function CuratorRail({ books, storageRoot, onRead, onSearch }: CuratorRai
         ))}
 
         {newOpen && (
-          <input
-            autoFocus
-            className={styles.newInput}
-            placeholder="Collection name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submitNew();
-              else if (e.key === "Escape") setNewOpen(false);
-            }}
-            onBlur={submitNew}
-          />
+          <label className={styles.newField}>
+            <span className={styles.newLabel}>New collection</span>
+            <input
+              autoFocus
+              className={styles.newInput}
+              placeholder="Name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitNew();
+                else if (e.key === "Escape") setNewOpen(false);
+              }}
+              onBlur={submitNew}
+            />
+          </label>
         )}
 
         <button
@@ -174,6 +177,7 @@ export function CuratorRail({ books, storageRoot, onRead, onSearch }: CuratorRai
             <input
               autoFocus
               className={styles.nameInput}
+              aria-label="Profile name"
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
               onKeyDown={(e) => {

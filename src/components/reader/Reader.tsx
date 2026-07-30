@@ -1,142 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Highlighter, List, X } from "lucide-react";
 
-import { bookUrl } from "../../lib/assets";
-import { getReadingState, recordSession, saveReadingState } from "../../lib/ipc";
-import { ReadingSession } from "../../reader/readingSession";
-import {
-  HIGHLIGHT_COLOR_KEYS,
-  tintFor,
-  type HighlightColor,
-} from "../../lib/highlightColors";
 import type { HighlightColorKey } from "../../lib/types";
-import { NovusRenderer } from "../../reader/NovusRenderer";
-import type { RenderHighlight, SelectionDetail, TocItem } from "../../reader/types";
-import { FONT_STACKS, useReaderSettings, type ReaderSettings } from "../../store/reader";
 import { useHighlights } from "../../store/highlights";
 import { useLibrary } from "../../store/library";
+import { useReaderSettings } from "../../store/reader";
 import { DisplaySettings } from "./DisplaySettings";
 import { HighlightBar } from "./HighlightBar";
 import { HighlightsPanel } from "./HighlightsPanel";
+import { useBookRenderer } from "./useBookRenderer";
 import { WhyBox } from "./WhyBox";
 import styles from "./Reader.module.css";
 
-type ColorMap = Record<HighlightColorKey, HighlightColor>;
-
-/* filename */
-function hrefTail(href: string): string {
-  return href.split("/").pop() ?? href;
-}
-
-/* chapter target */
-function resolveTocTarget(toc: TocItem[] | undefined, target: string): string {
-  const tail = hrefTail(target);
-  const flat: TocItem[] = [];
-  const walk = (items?: TocItem[]) =>
-    items?.forEach((it) => {
-      if (it.href) flat.push(it);
-      walk(it.subitems);
-    });
-  walk(toc);
-  return flat.find((it) => hrefTail(it.href) === tail)?.href ?? target;
-}
-
-function applyLayout(renderer: NovusRenderer, s: ReaderSettings): void {
-  renderer.setFlow(s.layout === "paged" ? "paginated" : "scrolled");
-  renderer.setMaxInlineSize(s.measure);
-}
-
-const READ_THEMES: Record<ReaderSettings["readTheme"], { bg: string; ink: string }> = {
-  light: { bg: "#f4f5f7", ink: "#1b1d23" },
-  sepia: { bg: "#ece1cf", ink: "#433a2b" },
-  dark: { bg: "#0c0d10", ink: "#c9ccd4" },
-};
 const CHROME_IDLE_MS = 2600;
-
-const DWELL_SAVE_MS = 3000;
-const UNMOUNT_SAVE_MIN_DWELL_MS = 1500;
-const SESSION_FLUSH_MS = 60_000;
-
-function buildHighlightCss(colors: ColorMap): string {
-  const slots = HIGHLIGHT_COLOR_KEYS.map(
-    (key) =>
-      `mark.nv-hl[data-color="${key}"] { background-image: linear-gradient(${tintFor(colors[key].color)}, ${tintFor(colors[key].color)}); }`,
-  ).join("\n");
-  return `
-    mark.nv-hl {
-      color: inherit !important;
-      background-color: transparent;
-      background-repeat: no-repeat;
-      background-position: 0 0;
-      background-size: 100% 100%;
-      border-radius: 2px;
-      -webkit-box-decoration-break: clone;
-      box-decoration-break: clone;
-    }
-    ${slots}
-    @keyframes nvHlSweep { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }
-    mark.nv-hl-new { animation: nvHlSweep 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-    @media (prefers-reduced-motion: reduce) { mark.nv-hl-new { animation: none; } }
-  `;
-}
-
-function buildBookCss(s: ReaderSettings, colors: ColorMap): string {
-  const t = READ_THEMES[s.readTheme];
-  const justify = s.align === "justify";
-  const embedded = `
-    blockquote {
-      margin-block: 1.3em;
-      margin-inline: 0;
-      padding-inline-start: 1.15em;
-      border-inline-start: 2px solid color-mix(in srgb, ${t.ink} 24%, transparent);
-      color: color-mix(in srgb, ${t.ink} 84%, ${t.bg}) !important;
-    }
-    blockquote p { text-indent: 0; margin-block: 0.4em; }
-    figure { margin-inline: 0; text-align: center; }
-    figcaption { font-size: 0.82em; opacity: 0.7; margin-block-start: 0.5em; }
-  `;
-
-  return `
-    @namespace epub "http://www.idpf.org/2007/ops";
-    html { color-scheme: ${s.readTheme === "dark" ? "dark" : "light"}; font-size: ${s.fontSize}px; background: ${t.bg} !important; color: ${t.ink} !important; }
-    body { background: ${t.bg} !important; color: ${t.ink} !important; }
-    body :where(p, li, dd, dt, ol, ul, dl, h1, h2, h3, h4, h5, h6, span, em, strong,
-      b, i, u, s, small, sub, sup, mark, cite, q, abbr, time, address, div, section,
-      article, header, footer, aside, main, nav, table, thead, tbody, tr, td, th,
-      caption, figure, figcaption, hr, label) {
-      color: inherit !important;
-      background-color: transparent !important;
-    }
-    p, li, dd, dt, blockquote, td, th {
-      font-family: ${FONT_STACKS[s.font]} !important;
-      font-size: ${s.fontSize}px !important;
-      line-height: ${s.lineHeight} !important;
-      text-align: ${justify ? "justify" : "start"};
-      -webkit-hyphens: ${justify ? "auto" : "manual"};
-      hyphens: ${justify ? "auto" : "manual"};
-    }
-    caption, figcaption {
-      font-family: ${FONT_STACKS[s.font]} !important;
-      line-height: ${s.lineHeight} !important;
-    }
-    p { margin-block: ${s.paragraphSpacing}em; }
-    [align="left"] { text-align: left; }
-    [align="right"] { text-align: right; }
-    [align="center"] { text-align: center; }
-    [align="justify"] { text-align: justify; }
-    ${embedded}
-    a:link, a:visited { color: ${t.ink} !important; }
-    pre { white-space: pre-wrap !important; }
-    ${buildHighlightCss(colors)}
-  `;
-}
 
 export function Reader() {
   const activeBookId = useLibrary((s) => s.activeBookId);
   const books = useLibrary((s) => s.books);
   const storageRoot = useLibrary((s) => s.storageRoot);
   const goLibrary = useLibrary((s) => s.goLibrary);
-  const consumePendingLocator = useLibrary((s) => s.consumePendingLocator);
   const settings = useReaderSettings();
 
   const highlights = useHighlights((s) => s.highlights);
@@ -144,32 +26,18 @@ export function Reader() {
 
   const book = books.find((b) => b.id === activeBookId) ?? null;
 
-  const hostRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<NovusRenderer | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingSave = useRef<{ cfi: string | null; fraction: number } | null>(null);
-  const lastMoveAt = useRef(0);
-  const restored = useRef(false);
-  const session = useRef<ReadingSession | null>(null);
-  const lastFraction = useRef(0);
-
-  const [ready, setReady] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [location, setLocation] = useState<{ current: number; total: number } | null>(null);
-  const [chapter, setChapter] = useState("");
-  const [toc, setToc] = useState<TocItem[]>([]);
   const [tocOpen, setTocOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [chromeHidden, setChromeHidden] = useState(false);
-  const [selection, setSelection] = useState<SelectionDetail | null>(null);
   const [whyForId, setWhyForId] = useState<string | null>(null);
-
-  const pendingNewId = useRef<string | null>(null);
 
   const chromeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayOpenRef = useRef(false);
-  overlayOpenRef.current = settingsOpen || tocOpen || panelOpen;
+
+  useEffect(() => {
+    overlayOpenRef.current = settingsOpen || tocOpen || panelOpen;
+  }, [settingsOpen, tocOpen, panelOpen]);
 
   const revealChrome = useCallback(() => {
     setChromeHidden(false);
@@ -178,143 +46,25 @@ export function Reader() {
     chromeTimer.current = setTimeout(() => setChromeHidden(true), CHROME_IDLE_MS);
   }, []);
 
-  // Open the book once per book id.
-  useEffect(() => {
-    if (!book || !storageRoot) return;
-    let cancelled = false;
-    let renderer: NovusRenderer | null = null;
-
-    const onRelocate = (detail: import("../../reader/types").RelocateDetail) => {
-      const fraction = detail.fraction ?? 0;
-      setProgress(fraction);
-      setLocation(detail.location ?? null);
-      if (detail.tocItem?.label) setChapter(detail.tocItem.label);
-      lastFraction.current = fraction;
-      if (!restored.current || detail.reason === "layout") return;
-      session.current?.add(fraction, detail.reason);
-      lastMoveAt.current = Date.now();
-      pendingSave.current = { cfi: detail.cfi ?? null, fraction };
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        const pending = pendingSave.current;
-        if (!pending) return;
-        pendingSave.current = null;
-        saveReadingState(book.id, pending.cfi, pending.fraction).catch(() => {});
-      }, DWELL_SAVE_MS);
-    };
-
-    const onLoad = (detail: import("../../reader/types").LoadDetail) => {
-      detail.doc?.addEventListener("mousemove", revealChrome);
-    };
-
-    lastFraction.current = 0;
-    restored.current = false;
-    pendingSave.current = null;
-    session.current = null;
-
-    const flushSession = () => {
-      const record = session.current?.toRecord(book.id);
-      if (record) recordSession(record).catch(() => {});
-    };
-    const flushTimer = setInterval(flushSession, SESSION_FLUSH_MS);
-
-    (async () => {
-      const url = bookUrl(book, storageRoot);
-      if (!url || !hostRef.current || cancelled) return;
-      const res = await fetch(url);
-      const blob = await res.blob();
-      const file = new File([blob], `book.${book.format}`);
-
-      renderer = new NovusRenderer(hostRef.current);
-      viewRef.current = renderer;
-      renderer.on("relocate", onRelocate);
-      renderer.on("load", onLoad);
-      renderer.on("selection", (d) => setSelection(d));
-      await renderer.open(file);
-      if (cancelled) {
-        renderer.destroy();
-        return;
-      }
-
-      applyLayout(renderer, settings);
-      renderer.setStyles(buildBookCss(settings, colors));
-      setToc(renderer.toc);
-
-      const pending = consumePendingLocator();
-      if (pending) {
-        const target = resolveTocTarget(renderer.toc, pending);
-        if (!(await renderer.goTo(target))) await renderer.resetPosition();
-      } else {
-        const saved = await getReadingState(book.id);
-        if (saved?.locator) {
-          if (!(await renderer.goTo(saved.locator))) await renderer.resetPosition();
-        } else {
-          await renderer.resetPosition();
-        }
-      }
-      restored.current = true;
-      session.current = new ReadingSession(lastFraction.current);
-      setReady(true);
-    })();
-
-    return () => {
-      cancelled = true;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      const pending = pendingSave.current;
-      if (pending && Date.now() - lastMoveAt.current >= UNMOUNT_SAVE_MIN_DWELL_MS) {
-        saveReadingState(book.id, pending.cfi, pending.fraction).catch(() => {});
-      }
-      pendingSave.current = null;
-      clearInterval(flushTimer);
-      flushSession();
-      session.current = null;
-      renderer?.destroy();
-      viewRef.current = null;
-      setReady(false);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book?.id, storageRoot]);
-
-  useEffect(() => {
-    const renderer = viewRef.current;
-    if (!renderer || !ready) return;
-    applyLayout(renderer, settings);
-    renderer.setStyles(buildBookCss(settings, colors));
-  }, [
+  const {
+    hostRef,
+    viewRef,
+    pendingNewId,
     ready,
-    settings.layout,
-    settings.measure,
-    settings.font,
-    settings.fontSize,
-    settings.lineHeight,
-    settings.paragraphSpacing,
-    settings.align,
-    settings.readTheme,
+    progress,
+    location,
+    chapter,
+    toc,
+    selection,
+    setSelection,
+  } = useBookRenderer({
+    activeBookId,
+    storageRoot,
+    settings,
     colors,
-  ]);
-
-  // Load this book's highlights when it opens.
-  useEffect(() => {
-    if (book?.id) useHighlights.getState().loadFor(book.id);
-  }, [book?.id]);
-
-  const renderSig = useMemo(
-    () => highlights.map((h) => `${h.id}:${h.cfi}:${h.color}:${h.sectionIndex}`).join("|"),
-    [highlights],
-  );
-  useEffect(() => {
-    const renderer = viewRef.current;
-    if (!renderer || !ready) return;
-    const list: RenderHighlight[] = highlights.map((h) => ({
-      id: h.id,
-      cfi: h.cfi,
-      color: h.color,
-      sectionIndex: h.sectionIndex,
-    }));
-    renderer.setHighlights(list, pendingNewId.current ?? undefined);
-    pendingNewId.current = null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, renderSig]);
+    highlights,
+    revealChrome,
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -324,7 +74,7 @@ export function Reader() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [settingsOpen, tocOpen, panelOpen, selection, whyForId]);
+  }, [viewRef, settingsOpen, tocOpen, panelOpen, selection, whyForId]);
 
   // Auto-hide the chrome on idle; any pointer/key activity brings it back.
   useEffect(() => {
@@ -490,9 +240,9 @@ export function Reader() {
               </button>
             </div>
             <div className={styles.tocList}>
-              {toc.map((item, i) => (
+              {toc.map((item) => (
                 <button
-                  key={`${item.href}-${i}`}
+                  key={item.href}
                   type="button"
                   className={styles.tocItem}
                   onClick={() => goToToc(item.href)}

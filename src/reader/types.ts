@@ -58,6 +58,9 @@ export interface ReaderSurface {
   on(type: "relocate", cb: (detail: RelocateDetail) => void): void;
   on(type: "load", cb: (detail: LoadDetail) => void): void;
   on(type: "selection", cb: (detail: SelectionDetail | null) => void): void;
+  off(type: "relocate", cb: (detail: RelocateDetail) => void): void;
+  off(type: "load", cb: (detail: LoadDetail) => void): void;
+  off(type: "selection", cb: (detail: SelectionDetail | null) => void): void;
 }
 
 export type SectionSource = string;

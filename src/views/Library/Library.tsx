@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   AlignLeft,
   Check,
@@ -66,6 +66,294 @@ interface MenuState {
 interface PeekState {
   book: Book;
   rect: DOMRect;
+}
+
+interface LibraryMastheadProps {
+  sort: SortKey;
+  sortMenu: boolean;
+  searchOpen: boolean;
+  searchRef: RefObject<HTMLInputElement | null>;
+  query: string;
+  importing: boolean;
+  onToggleSort: () => void;
+  onCloseSort: () => void;
+  onSelectSort: (sort: SortKey) => void;
+  onOpenSearch: () => void;
+  onCloseSearch: () => void;
+  onQueryChange: (query: string) => void;
+  onAddBooks: () => void;
+}
+
+function LibraryMasthead({
+  sort,
+  sortMenu,
+  searchOpen,
+  searchRef,
+  query,
+  importing,
+  onToggleSort,
+  onCloseSort,
+  onSelectSort,
+  onOpenSearch,
+  onCloseSearch,
+  onQueryChange,
+  onAddBooks,
+}: LibraryMastheadProps) {
+  return (
+    <div className={styles.masthead}>
+      <div>
+        <div className={styles.mastEyebrow}>Your collection</div>
+        <h1 className={styles.mastTitle}>Library</h1>
+      </div>
+      <div className={styles.mastControls}>
+        <div className={styles.sortWrap}>
+          <button
+            type="button"
+            className={styles.sortBtn}
+            aria-haspopup="menu"
+            aria-expanded={sortMenu}
+            onClick={onToggleSort}
+          >
+            {SORT_OPTIONS.find((option) => option.value === sort)?.short}
+            <ChevronDown size={11} strokeWidth={2.2} />
+          </button>
+          {sortMenu && (
+            <>
+              <button
+                type="button"
+                className={styles.menuScrim}
+                aria-label="Close sort menu"
+                onClick={onCloseSort}
+              />
+              <div className={styles.sortMenu} role="menu">
+                {SORT_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={sort === option.value}
+                    className={`${styles.sortItem} ${sort === option.value ? styles.sortItemOn : ""}`}
+                    onClick={() => onSelectSort(option.value)}
+                  >
+                    {option.label}
+                    {sort === option.value && <Check size={14} strokeWidth={2} />}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {searchOpen ? (
+          <div className={styles.searchInline}>
+            <Search size={15} strokeWidth={2} />
+            <input
+              ref={searchRef}
+              type="search"
+              className={styles.searchInlineInput}
+              placeholder="Search title or author"
+              aria-label="Search your library"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") onCloseSearch();
+              }}
+            />
+            <button
+              type="button"
+              className={styles.searchClose}
+              title="Close search"
+              aria-label="Close search"
+              onClick={onCloseSearch}
+            >
+              <X size={13} strokeWidth={2} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className={styles.iconBtn}
+            title="Search your library (⌘F)"
+            aria-label="Search your library"
+            onClick={onOpenSearch}
+          >
+            <Search size={17} strokeWidth={2} />
+          </button>
+        )}
+
+        <button
+          type="button"
+          className={styles.addBtn}
+          onClick={onAddBooks}
+          disabled={importing}
+        >
+          <Plus size={14} strokeWidth={1.8} />
+          {importing ? "Importing…" : "Add books"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface LibraryShelvesProps {
+  continueBooks: Book[];
+  shownBooks: Book[];
+  storageRoot: string;
+  continueOpen: boolean;
+  shelfLabel: string;
+  query: string;
+  onToggleContinue: () => void;
+  onOpen: (book: Book, rect: DOMRect | null) => void;
+  onMenu: (book: Book, x: number, y: number) => void;
+  onPeek: (book: Book, rect: DOMRect) => void;
+  onPeekEnd: () => void;
+}
+
+function LibraryShelves({
+  continueBooks,
+  shownBooks,
+  storageRoot,
+  continueOpen,
+  shelfLabel,
+  query,
+  onToggleContinue,
+  onOpen,
+  onMenu,
+  onPeek,
+  onPeekEnd,
+}: LibraryShelvesProps) {
+  const trimmedQuery = query.trim();
+
+  return (
+    <>
+      {continueBooks.length > 0 && !trimmedQuery && (
+        <section className={styles.shelf}>
+          <button
+            type="button"
+            className={styles.shelfHeadBtn}
+            aria-expanded={continueOpen}
+            aria-controls="continue-shelf"
+            onClick={onToggleContinue}
+          >
+            <span className={styles.shelfLabel}>Continue reading</span>
+            <span className={styles.shelfRule} />
+            <span className={styles.shelfCount}>
+              {continueBooks.length} {continueBooks.length === 1 ? "VOLUME" : "VOLUMES"}
+            </span>
+            <ChevronDown
+              size={13}
+              strokeWidth={2.2}
+              className={`${styles.shelfChev} ${continueOpen ? "" : styles.shelfChevClosed}`}
+            />
+          </button>
+          <div
+            id="continue-shelf"
+            inert={!continueOpen}
+            className={`${styles.fold} ${continueOpen ? "" : styles.foldClosed}`}
+            onTransitionEnd={(event) => {
+              if (event.propertyName === "grid-template-rows") remeasureShelves();
+            }}
+          >
+            <div className={styles.foldInner}>
+              <div className={styles.foldPad}>
+                <VirtualShelf
+                  books={continueBooks}
+                  storageRoot={storageRoot}
+                  progressEdge
+                  onOpen={onOpen}
+                  onMenu={onMenu}
+                  onPeek={onPeek}
+                  onPeekEnd={onPeekEnd}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <div className={styles.shelf}>
+        <div className={styles.shelfHead}>
+          <span className={styles.shelfLabel}>{shelfLabel}</span>
+          <span className={styles.shelfRule} />
+          <span className={styles.shelfCount}>
+            {shownBooks.length} {shownBooks.length === 1 ? "VOLUME" : "VOLUMES"}
+          </span>
+        </div>
+        {shownBooks.length === 0 ? (
+          <div className={styles.collEmpty}>
+            {trimmedQuery
+              ? `No books match “${trimmedQuery}”.`
+              : "Nothing here yet — add books from their details or right-click menu."}
+          </div>
+        ) : (
+          <VirtualShelf
+            books={shownBooks}
+            storageRoot={storageRoot}
+            onOpen={onOpen}
+            onMenu={onMenu}
+            onPeek={onPeek}
+            onPeekEnd={onPeekEnd}
+          />
+        )}
+      </div>
+    </>
+  );
+}
+
+interface BookContextMenuProps {
+  menu: MenuState;
+  onClose: () => void;
+  onRead: (book: Book) => void;
+  onDetails: (book: Book) => void;
+  onRemove: (book: Book) => void;
+}
+
+function BookContextMenu({
+  menu,
+  onClose,
+  onRead,
+  onDetails,
+  onRemove,
+}: BookContextMenuProps) {
+  return (
+    <>
+      <button
+        type="button"
+        className={styles.menuScrim}
+        aria-label="Close book menu"
+        onClick={onClose}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onClose();
+        }}
+      />
+      <div
+        className={styles.menu}
+        style={{
+          left: Math.min(menu.x, window.innerWidth - 220),
+          top: Math.min(menu.y, window.innerHeight - 120),
+        }}
+      >
+        <button type="button" className={styles.menuItem} onClick={() => onRead(menu.book)}>
+          <Play size={14} fill="currentColor" strokeWidth={0} />
+          {menu.book.progress > 0 && menu.book.progress < 1 ? "Continue reading" : "Read"}
+        </button>
+        <button type="button" className={styles.menuItem} onClick={() => onDetails(menu.book)}>
+          <AlignLeft size={14} strokeWidth={1.7} />
+          Details
+        </button>
+        <div className={styles.menuDivider} />
+        <button
+          type="button"
+          className={`${styles.menuItem} ${styles.danger}`}
+          onClick={() => onRemove(menu.book)}
+        >
+          <Trash2 size={14} strokeWidth={1.7} />
+          Remove from library
+        </button>
+      </div>
+    </>
+  );
 }
 
 export function Library({ dropping }: LibraryProps) {
@@ -178,11 +466,9 @@ export function Library({ dropping }: LibraryProps) {
   );
 
   const toggleContinue = () => {
-    setContinueOpen((open) => {
-      const next = !open;
-      localStorage.setItem(CONTINUE_OPEN_KEY, next ? "1" : "0");
-      return next;
-    });
+    const next = !continueOpen;
+    setContinueOpen(next);
+    localStorage.setItem(CONTINUE_OPEN_KEY, next ? "1" : "0");
     requestAnimationFrame(remeasureShelves);
   };
 
@@ -220,184 +506,40 @@ export function Library({ dropping }: LibraryProps) {
           />
           <div className={styles.shelves} data-scroller>
             <div className={styles.shelvesInner}>
-              <div className={styles.masthead}>
-                <div>
-                  <div className={styles.mastEyebrow}>Your collection</div>
-                  <h1 className={styles.mastTitle}>Library</h1>
-                </div>
-                <div className={styles.mastControls}>
-                  <div className={styles.sortWrap}>
-                    <button
-                      type="button"
-                      className={styles.sortBtn}
-                      aria-haspopup="menu"
-                      aria-expanded={sortMenu}
-                      onClick={() => setSortMenu((v) => !v)}
-                    >
-                      {SORT_OPTIONS.find((o) => o.value === sort)?.short}
-                      <ChevronDown size={11} strokeWidth={2.2} />
-                    </button>
-                    {sortMenu && (
-                      <>
-                        <button
-                          type="button"
-                          className={styles.menuScrim}
-                          aria-label="Close sort menu"
-                          onClick={() => setSortMenu(false)}
-                        />
-                        <div className={styles.sortMenu} role="menu">
-                          {SORT_OPTIONS.map((o) => (
-                            <button
-                              key={o.value}
-                              type="button"
-                              role="menuitemradio"
-                              aria-checked={sort === o.value}
-                              className={`${styles.sortItem} ${sort === o.value ? styles.sortItemOn : ""}`}
-                              onClick={() => {
-                                setSort(o.value);
-                                setSortMenu(false);
-                              }}
-                            >
-                              {o.label}
-                              {sort === o.value && (
-                                <Check size={14} strokeWidth={2} />
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {searchOpen ? (
-                    <div className={styles.searchInline}>
-                      <Search size={15} strokeWidth={2} />
-                      <input
-                        ref={searchRef}
-                        type="search"
-                        className={styles.searchInlineInput}
-                        placeholder="Search title or author"
-                        aria-label="Search your library"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape") closeSearch();
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className={styles.searchClose}
-                        title="Close search"
-                        aria-label="Close search"
-                        onClick={closeSearch}
-                      >
-                        <X size={13} strokeWidth={2} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      className={styles.iconBtn}
-                      title="Search your library (⌘F)"
-                      aria-label="Search your library"
-                      onClick={openSearch}
-                    >
-                      <Search size={17} strokeWidth={2} />
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    className={styles.addBtn}
-                    onClick={pickAndImport}
-                    disabled={importing}
-                  >
-                    <Plus size={14} strokeWidth={1.8} />
-                    {importing ? "Importing…" : "Add books"}
-                  </button>
-                </div>
-              </div>
-
-              {continueBooks.length > 0 && !q && (
-                <section className={styles.shelf}>
-                  <button
-                    type="button"
-                    className={styles.shelfHeadBtn}
-                    aria-expanded={continueOpen}
-                    aria-controls="continue-shelf"
-                    onClick={toggleContinue}
-                  >
-                    <span className={styles.shelfLabel}>Continue reading</span>
-                    <span className={styles.shelfRule} />
-                    <span className={styles.shelfCount}>
-                      {continueBooks.length}{" "}
-                      {continueBooks.length === 1 ? "VOLUME" : "VOLUMES"}
-                    </span>
-                    <ChevronDown
-                      size={13}
-                      strokeWidth={2.2}
-                      className={`${styles.shelfChev} ${continueOpen ? "" : styles.shelfChevClosed}`}
-                    />
-                  </button>
-                  <div
-                    id="continue-shelf"
-                    inert={!continueOpen}
-                    className={`${styles.fold} ${continueOpen ? "" : styles.foldClosed}`}
-                    onTransitionEnd={(e) => {
-                      if (e.propertyName === "grid-template-rows") {
-                        remeasureShelves();
-                      }
-                    }}
-                  >
-                    <div className={styles.foldInner}>
-                      <div className={styles.foldPad}>
-                        <VirtualShelf
-                          books={continueBooks}
-                          storageRoot={storageRoot}
-                          progressEdge
-                          onOpen={(b, rect) => openDetail(b, rect)}
-                          onMenu={(b, x, y) => {
-                            endPeek();
-                            setMenu({ book: b, x, y });
-                          }}
-                          onPeek={beginPeek}
-                          onPeekEnd={endPeek}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              <div className={styles.shelf}>
-                <div className={styles.shelfHead}>
-                  <span className={styles.shelfLabel}>{shelfLabel}</span>
-                  <span className={styles.shelfRule} />
-                  <span className={styles.shelfCount}>
-                    {shownBooks.length}{" "}
-                    {shownBooks.length === 1 ? "VOLUME" : "VOLUMES"}
-                  </span>
-                </div>
-                {shownBooks.length === 0 ? (
-                  <div className={styles.collEmpty}>
-                    {q
-                      ? `No books match “${query.trim()}”.`
-                      : "Nothing here yet — add books from their details or right-click menu."}
-                  </div>
-                ) : (
-                  <VirtualShelf
-                    books={shownBooks}
-                    storageRoot={storageRoot}
-                    onOpen={(b, rect) => openDetail(b, rect)}
-                    onMenu={(b, x, y) => {
-                      endPeek();
-                      setMenu({ book: b, x, y });
-                    }}
-                    onPeek={beginPeek}
-                    onPeekEnd={endPeek}
-                  />
-                )}
-              </div>
+              <LibraryMasthead
+                sort={sort}
+                sortMenu={sortMenu}
+                searchOpen={searchOpen}
+                searchRef={searchRef}
+                query={query}
+                importing={importing}
+                onToggleSort={() => setSortMenu((open) => !open)}
+                onCloseSort={() => setSortMenu(false)}
+                onSelectSort={(nextSort) => {
+                  setSort(nextSort);
+                  setSortMenu(false);
+                }}
+                onOpenSearch={openSearch}
+                onCloseSearch={closeSearch}
+                onQueryChange={setQuery}
+                onAddBooks={pickAndImport}
+              />
+              <LibraryShelves
+                continueBooks={continueBooks}
+                shownBooks={shownBooks}
+                storageRoot={storageRoot}
+                continueOpen={continueOpen}
+                shelfLabel={shelfLabel}
+                query={query}
+                onToggleContinue={toggleContinue}
+                onOpen={openDetail}
+                onMenu={(book, x, y) => {
+                  endPeek();
+                  setMenu({ book, x, y });
+                }}
+                onPeek={beginPeek}
+                onPeekEnd={endPeek}
+              />
             </div>
           </div>
         </div>
@@ -416,56 +558,16 @@ export function Library({ dropping }: LibraryProps) {
       )}
 
       {menu && (
-        <>
-          <button
-            type="button"
-            className={styles.menuScrim}
-            aria-label="Close book menu"
-            onClick={() => setMenu(null)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setMenu(null);
-            }}
-          />
-          <div
-            className={styles.menu}
-            style={{
-              left: Math.min(menu.x, window.innerWidth - 220),
-              top: Math.min(menu.y, window.innerHeight - 120),
-            }}
-          >
-            <button
-              type="button"
-              className={styles.menuItem}
-              onClick={() => read(menu.book)}
-            >
-              <Play size={14} fill="currentColor" strokeWidth={0} />
-              {menu.book.progress > 0 && menu.book.progress < 1
-                ? "Continue reading"
-                : "Read"}
-            </button>
-            <button
-              type="button"
-              className={styles.menuItem}
-              onClick={() => {
-                openDetail(menu.book, null);
-                setMenu(null);
-              }}
-            >
-              <AlignLeft size={14} strokeWidth={1.7} />
-              Details
-            </button>
-            <div className={styles.menuDivider} />
-            <button
-              type="button"
-              className={`${styles.menuItem} ${styles.danger}`}
-              onClick={() => remove(menu.book)}
-            >
-              <Trash2 size={14} strokeWidth={1.7} />
-              Remove from library
-            </button>
-          </div>
-        </>
+        <BookContextMenu
+          menu={menu}
+          onClose={() => setMenu(null)}
+          onRead={read}
+          onDetails={(book) => {
+            openDetail(book, null);
+            setMenu(null);
+          }}
+          onRemove={remove}
+        />
       )}
 
       {selected && (

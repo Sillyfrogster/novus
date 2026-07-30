@@ -8,8 +8,6 @@ export interface HighlightColor {
 
 export const HIGHLIGHT_COLOR_KEYS: HighlightColorKey[] = ["slate", "sage", "violet", "rose"];
 
-export const DEFAULT_HIGHLIGHT_COLOR: HighlightColorKey = "slate";
-
 const DEFAULTS: Record<HighlightColorKey, HighlightColor> = {
   slate: { label: "Slate", color: "#9fb4d0" },
   sage: { label: "Sage", color: "#9bbcaf" },
@@ -17,14 +15,27 @@ const DEFAULTS: Record<HighlightColorKey, HighlightColor> = {
   rose: { label: "Rose", color: "#d3a3ad" },
 };
 
-const STORE_KEY = "novus.highlightColors";
+const STORE_KEY = "novus.highlightColors:v1";
+const LEGACY_STORE_KEY = "novus.highlightColors";
 
 type ColorMap = Record<HighlightColorKey, HighlightColor>;
 
 function loadOverrides(): Partial<Record<HighlightColorKey, Partial<HighlightColor>>> {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) return JSON.parse(raw) as Partial<Record<HighlightColorKey, Partial<HighlightColor>>>;
+    const stored = localStorage.getItem(STORE_KEY);
+    if (stored) {
+      return JSON.parse(stored) as Partial<Record<HighlightColorKey, Partial<HighlightColor>>>;
+    }
+
+    const legacy = localStorage.getItem(LEGACY_STORE_KEY);
+    if (legacy) {
+      const parsed = JSON.parse(
+        legacy,
+      ) as Partial<Record<HighlightColorKey, Partial<HighlightColor>>>;
+      localStorage.setItem(STORE_KEY, JSON.stringify(parsed));
+      localStorage.removeItem(LEGACY_STORE_KEY);
+      return parsed;
+    }
   } catch {
   }
   return {};

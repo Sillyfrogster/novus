@@ -63,7 +63,13 @@ export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
           >
             <Settings2 size={15} strokeWidth={1.7} />
           </button>
-          <button type="button" className={styles.iconBtn} onClick={onClose} title="Close">
+          <button
+            type="button"
+            className={styles.iconBtn}
+            onClick={onClose}
+            title="Close"
+            aria-label="Close highlights"
+          >
             <X size={14} strokeWidth={1.4} />
           </button>
         </div>
@@ -74,11 +80,15 @@ export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
           {HIGHLIGHT_COLOR_KEYS.map((key) => (
             <div key={key} className={styles.manageRow}>
               <label className={styles.swatchLabel} title="Change color">
+                <span className={styles.visuallyHidden}>
+                  Color for {colors[key].label}
+                </span>
                 <span className={styles.swatch} style={{ background: colors[key].color }} />
                 <input
                   type="color"
                   className={styles.colorInput}
                   value={colors[key].color}
+                  aria-label={`Color for ${colors[key].label}`}
                   onChange={(e) => recolor(key, e.target.value)}
                 />
               </label>

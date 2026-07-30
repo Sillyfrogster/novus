@@ -174,6 +174,15 @@ export class NovusRenderer implements ReaderSurface {
     else this.#selectionCb = cb as (d: SelectionDetail | null) => void;
   }
 
+  off(type: "relocate", cb: (d: RelocateDetail) => void): void;
+  off(type: "load", cb: (d: LoadDetail) => void): void;
+  off(type: "selection", cb: (d: SelectionDetail | null) => void): void;
+  off(type: "relocate" | "load" | "selection", cb: (d: never) => void): void {
+    if (type === "relocate" && this.#relocateCb === cb) this.#relocateCb = null;
+    else if (type === "load" && this.#loadCb === cb) this.#loadCb = null;
+    else if (type === "selection" && this.#selectionCb === cb) this.#selectionCb = null;
+  }
+
   async open(file: File): Promise<void> {
     const { openBook } = await import("./openBook");
     const book = await openBook(file);
@@ -314,6 +323,7 @@ export class NovusRenderer implements ReaderSurface {
     this.#book = null;
     this.#relocateCb = null;
     this.#loadCb = null;
+    this.#selectionCb = null;
   }
 
   // display sections

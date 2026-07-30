@@ -289,10 +289,23 @@
   color: var(--accent-fg);
   border-color: var(--accent);
 }
-.chipInput {
+.chipField {
+  display: block;
   margin-top: 10px;
   width: 100%;
   max-width: 280px;
+}
+.chipLabel {
+  display: block;
+  margin-bottom: 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.chipInput {
+  width: 100%;
   height: 36px;
   background: var(--surface);
   border: 1px solid var(--line);

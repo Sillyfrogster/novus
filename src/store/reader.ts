@@ -2,7 +2,8 @@ import { create } from "zustand";
 
 import type { ReadFont, ReadLayout, ReadTheme, TextAlign } from "../lib/types";
 
-const SETTINGS_KEY = "novus.readerSettings";
+const SETTINGS_KEY = "novus.readerSettings:v1";
+const LEGACY_SETTINGS_KEY = "novus.readerSettings";
 
 /** Page width  */
 export const MEASURE_MIN = 560;
@@ -35,11 +36,17 @@ const DEFAULTS: ReaderSettings = {
 
 function loadSettings(): ReaderSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    const stored = localStorage.getItem(SETTINGS_KEY);
+    const legacy = stored ? null : localStorage.getItem(LEGACY_SETTINGS_KEY);
+    const raw = stored ?? legacy;
     if (raw) {
       const merged = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<ReaderSettings>) };
       if (merged.measure < MEASURE_MIN || merged.measure > MEASURE_MAX) {
         merged.measure = DEFAULTS.measure;
+      }
+      if (legacy) {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+        localStorage.removeItem(LEGACY_SETTINGS_KEY);
       }
       return merged;
     }

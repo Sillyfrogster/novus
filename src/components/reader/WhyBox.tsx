@@ -30,11 +30,15 @@ export function WhyBox({ onSave, onDismiss }: WhyBoxProps) {
       className={styles.wrap}
       aria-label="Add a note to this highlight"
     >
+      <label className={styles.label} htmlFor="highlight-note">
+        Note
+      </label>
       <input
+        id="highlight-note"
         ref={ref}
         className={styles.input}
         value={note}
-        placeholder="Why this passage?  (optional)"
+        placeholder="Why this passage? (optional)"
         onChange={(e) => setNote(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {

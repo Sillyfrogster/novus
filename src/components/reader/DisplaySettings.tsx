@@ -44,7 +44,13 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
       <div className={styles.drawer}>
         <div className={styles.head}>
           <span className={styles.title}>Display</span>
-          <button type="button" className={styles.close} onClick={onClose} title="Close">
+          <button
+            type="button"
+            className={styles.close}
+            onClick={onClose}
+            title="Close"
+            aria-label="Close display settings"
+          >
             <X size={14} strokeWidth={1.4} />
           </button>
         </div>
@@ -87,14 +93,19 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
 
           <section>
             <div className={styles.rowLabel}>
-              <span className={styles.label} style={{ marginBottom: 0 }}>
+              <label
+                className={styles.label}
+                style={{ marginBottom: 0 }}
+                htmlFor="reader-font-size"
+              >
                 Font size
-              </span>
+              </label>
               <span className={styles.value}>{s.fontSize} px</span>
             </div>
             <div className={styles.sliderRow}>
               <span className={styles.glyphSm}>A</span>
               <input
+                id="reader-font-size"
                 type="range"
                 min={15}
                 max={26}
@@ -109,12 +120,17 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
 
           <section>
             <div className={styles.rowLabel}>
-              <span className={styles.label} style={{ marginBottom: 0 }}>
+              <label
+                className={styles.label}
+                style={{ marginBottom: 0 }}
+                htmlFor="reader-line-spacing"
+              >
                 Line spacing
-              </span>
+              </label>
               <span className={styles.value}>{s.lineHeight.toFixed(2)}</span>
             </div>
             <input
+              id="reader-line-spacing"
               type="range"
               min={1.3}
               max={2.2}
@@ -127,12 +143,17 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
 
           <section>
             <div className={styles.rowLabel}>
-              <span className={styles.label} style={{ marginBottom: 0 }}>
+              <label
+                className={styles.label}
+                style={{ marginBottom: 0 }}
+                htmlFor="reader-paragraph-spacing"
+              >
                 Paragraph spacing
-              </span>
+              </label>
               <span className={styles.value}>{s.paragraphSpacing.toFixed(2)} em</span>
             </div>
             <input
+              id="reader-paragraph-spacing"
               type="range"
               min={0}
               max={1.4}
@@ -177,14 +198,19 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
 
           <section>
             <div className={styles.rowLabel}>
-              <span className={styles.label} style={{ marginBottom: 0 }}>
+              <label
+                className={styles.label}
+                style={{ marginBottom: 0 }}
+                htmlFor="reader-page-width"
+              >
                 Page width
-              </span>
+              </label>
               <span className={styles.value}>{s.measure} px</span>
             </div>
             <div className={styles.sliderRow}>
               <span className={styles.glyphSm}>▮</span>
               <input
+                id="reader-page-width"
                 type="range"
                 min={MEASURE_MIN}
                 max={MEASURE_MAX}
@@ -199,12 +225,17 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
 
           <section>
             <div className={styles.rowLabel}>
-              <span className={styles.label} style={{ marginBottom: 0 }}>
+              <label
+                className={styles.label}
+                style={{ marginBottom: 0 }}
+                htmlFor="reader-brightness"
+              >
                 Brightness
-              </span>
+              </label>
               <span className={styles.value}>{Math.round(s.brightness * 100)}%</span>
             </div>
             <input
+              id="reader-brightness"
               type="range"
               min={0.45}
               max={1}

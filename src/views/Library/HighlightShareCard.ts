@@ -1,4 +1,4 @@
-import { MARK_PATH, MARK_VIEWBOX } from "../../components/Mark";
+import { MARK_PATH, MARK_VIEWBOX } from "../../lib/mark";
 import type { Book, Highlight } from "../../lib/types";
 
 /**

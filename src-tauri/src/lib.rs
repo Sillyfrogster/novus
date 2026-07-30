@@ -3,6 +3,8 @@ mod commands;
 mod db;
 mod error;
 mod import;
+#[allow(dead_code)]
+mod publication;
 mod storage;
 
 use std::sync::atomic::{AtomicBool, Ordering};

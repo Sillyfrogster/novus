@@ -3,7 +3,6 @@ mod commands;
 mod db;
 mod error;
 mod import;
-#[allow(dead_code)]
 mod publication;
 mod storage;
 
@@ -25,12 +24,32 @@ pub struct ZoomGuard(pub Arc<AtomicBool>);
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let zoom_locked = Arc::new(AtomicBool::new(true));
+    let publications = publication::PublicationRegistry::default();
+    let resource_publications = publications.clone();
+    let cleanup_publications = publications.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .manage(ZoomGuard(zoom_locked.clone()))
+        .manage(publications)
+        .register_asynchronous_uri_scheme_protocol(
+            "novus-epub",
+            move |context, request, responder| {
+                publication::serve_publication_request(
+                    resource_publications.clone(),
+                    context.webview_label().to_owned(),
+                    request,
+                    responder,
+                );
+            },
+        )
+        .on_window_event(move |window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                cleanup_publications.close_owner(window.label());
+            }
+        })
         .setup(move |app| {
             let storage = Storage::initialize(app.handle())?;
             let db = Db::open(&storage.db_path(), || storage.remove_legacy_voice_data())?;
@@ -71,6 +90,9 @@ pub fn run() {
             commands::import_books,
             commands::remove_book,
             commands::book_toc,
+            publication::registry::publication_open,
+            publication::registry::publication_section,
+            publication::registry::publication_close,
             commands::get_reading_state,
             commands::save_reading_state,
             commands::list_collections,

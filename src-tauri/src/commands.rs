@@ -1,11 +1,27 @@
+use std::path::Path;
 use std::sync::atomic::Ordering;
 
 use tauri::State;
 
+use crate::backup::{
+    cancel_restore, commit_restore, create_backup, finish_restore, prepare_restore,
+    request_restore_rollback, restore_status, BackupSummary, LibraryPreferences, RestoreStatus,
+    RestoreSummary,
+};
 use crate::db::{now_seconds, Book, Collection, Highlight, InsightsData, ReadingState};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::import::{import_paths, read_epub_toc, ImportSummary, TocEntry};
 use crate::{Novus, ZoomGuard};
+
+async fn run_blocking<T, F>(failure: &'static str, operation: F) -> AppResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> AppResult<T> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(operation)
+        .await
+        .map_err(|_| AppError::Other(failure.to_string()))?
+}
 
 /// Every book in the library, newest first.
 #[tauri::command]
@@ -25,10 +41,93 @@ pub fn storage_root(state: State<'_, Novus>) -> String {
     state.storage.root().to_string_lossy().to_string()
 }
 
+#[tauri::command]
+pub async fn create_library_backup(
+    state: State<'_, Novus>,
+    path: String,
+    preferences: LibraryPreferences,
+) -> AppResult<BackupSummary> {
+    let storage = state.storage.clone();
+    let db = state.db.clone();
+    let gate = state.content_gate.clone();
+    run_blocking(
+        "Novus could not finish saving the library copy",
+        move || {
+            let _content = gate.write().expect("content gate poisoned");
+            create_backup(&storage, &db, Path::new(&path), &preferences)
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn prepare_library_restore(
+    state: State<'_, Novus>,
+    path: String,
+) -> AppResult<RestoreSummary> {
+    let storage = state.storage.clone();
+    let gate = state.content_gate.clone();
+    run_blocking(
+        "Novus could not finish checking the library copy",
+        move || {
+            let _content = gate.write().expect("content gate poisoned");
+            prepare_restore(&storage, Path::new(&path))
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+pub fn commit_library_restore(state: State<'_, Novus>) -> AppResult<()> {
+    let _content = state.content_gate.write().expect("content gate poisoned");
+    commit_restore(&state.storage)
+}
+
+#[tauri::command]
+pub async fn cancel_library_restore(state: State<'_, Novus>) -> AppResult<()> {
+    let storage = state.storage.clone();
+    let gate = state.content_gate.clone();
+    run_blocking("Novus could not close the restore safely", move || {
+        let _content = gate.write().expect("content gate poisoned");
+        cancel_restore(&storage)
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn library_restore_status(state: State<'_, Novus>) -> AppResult<Option<RestoreStatus>> {
+    let _content = state.content_gate.read().expect("content gate poisoned");
+    restore_status(&state.storage)
+}
+
+#[tauri::command]
+pub async fn finish_library_restore(state: State<'_, Novus>) -> AppResult<()> {
+    let storage = state.storage.clone();
+    let gate = state.content_gate.clone();
+    run_blocking("Novus could not remove the recovery copy", move || {
+        let _content = gate.write().expect("content gate poisoned");
+        finish_restore(&storage)
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn rollback_library_restore(state: State<'_, Novus>) -> AppResult<()> {
+    let _content = state.content_gate.write().expect("content gate poisoned");
+    request_restore_rollback(&state.storage)
+}
+
 /// Import the given file paths into the managed library.
 #[tauri::command]
-pub fn import_books(state: State<'_, Novus>, paths: Vec<String>) -> AppResult<ImportSummary> {
-    Ok(import_paths(&state, paths))
+pub async fn import_books(state: State<'_, Novus>, paths: Vec<String>) -> AppResult<ImportSummary> {
+    let storage = state.storage.clone();
+    let db = state.db.clone();
+    let gate = state.content_gate.clone();
+    run_blocking("Novus could not finish importing these books", move || {
+        let _content = gate.write().expect("content gate poisoned");
+        Ok(import_paths(&storage, &db, paths))
+    })
+    .await
 }
 
 /// A book's saved reading position, if any.
@@ -49,12 +148,19 @@ pub fn save_reading_state(
 }
 
 #[tauri::command]
-pub fn book_toc(state: State<'_, Novus>, id: String) -> AppResult<Vec<TocEntry>> {
-    let Some(book) = state.db.get_book(&id)? else {
-        return Ok(Vec::new());
-    };
-    let bytes = std::fs::read(state.storage.resolve(&book.rel_path))?;
-    Ok(read_epub_toc(&bytes))
+pub async fn book_toc(state: State<'_, Novus>, id: String) -> AppResult<Vec<TocEntry>> {
+    let storage = state.storage.clone();
+    let db = state.db.clone();
+    let gate = state.content_gate.clone();
+    run_blocking("Novus could not read this book's contents", move || {
+        let _content = gate.read().expect("content gate poisoned");
+        let Some(book) = db.get_book(&id)? else {
+            return Ok(Vec::new());
+        };
+        let bytes = std::fs::read(storage.resolve_checked(&book.rel_path)?)?;
+        Ok(read_epub_toc(&bytes))
+    })
+    .await
 }
 
 // collections
@@ -199,18 +305,34 @@ pub fn delete_highlight(state: State<'_, Novus>, id: String) -> AppResult<()> {
 
 /// Write bytes to a user-chosen path.
 #[tauri::command]
-pub fn write_file(path: String, contents: Vec<u8>) -> AppResult<()> {
-    std::fs::write(&path, &contents).map_err(Into::into)
+pub async fn write_file(path: String, contents: Vec<u8>) -> AppResult<()> {
+    run_blocking("Novus could not save the file", move || {
+        std::fs::write(&path, &contents).map_err(Into::into)
+    })
+    .await
 }
 
 /// Remove a book from the library, deleting its managed file and cover.
 #[tauri::command]
-pub fn remove_book(state: State<'_, Novus>, id: String) -> AppResult<()> {
-    if let Some(book) = state.db.get_book(&id)? {
-        let _ = std::fs::remove_file(state.storage.resolve(&book.rel_path));
-        if let Some(cover) = &book.cover_path {
-            let _ = std::fs::remove_file(state.storage.resolve(cover));
+pub async fn remove_book(state: State<'_, Novus>, id: String) -> AppResult<()> {
+    let storage = state.storage.clone();
+    let db = state.db.clone();
+    let gate = state.content_gate.clone();
+    run_blocking("Novus could not remove this book", move || {
+        let _content = gate.write().expect("content gate poisoned");
+        let book = db.get_book(&id)?;
+        db.delete_book(&id)?;
+        if let Some(book) = book {
+            if let Ok(path) = storage.resolve_checked(&book.rel_path) {
+                let _ = std::fs::remove_file(path);
+            }
+            if let Some(cover) = &book.cover_path {
+                if let Ok(path) = storage.resolve_checked(cover) {
+                    let _ = std::fs::remove_file(path);
+                }
+            }
         }
-    }
-    state.db.delete_book(&id)
+        Ok(())
+    })
+    .await
 }

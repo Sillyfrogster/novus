@@ -4,5 +4,5 @@
   "description": "Desktop-only capabilities: self-update and relaunch.",
   "platforms": ["macOS", "windows", "linux"],
   "windows": ["main"],
-  "permissions": ["updater:default", "process:default"]
+  "permissions": ["updater:default", "process:allow-restart"]
 }

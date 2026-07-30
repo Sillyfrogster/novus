@@ -15,3 +15,15 @@
   display: flex;
   overflow: hidden;
 }
+
+.startupState {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--faint);
+  text-align: center;
+}

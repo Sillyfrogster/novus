@@ -19,6 +19,9 @@
   flex: 0 0 auto;
   color: var(--danger);
 }
+.toast[data-tone="success"] .icon {
+  color: var(--accent);
+}
 .message {
   flex: 1;
   min-width: 0;
@@ -27,6 +30,7 @@
   color: var(--ink);
 }
 .close {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -39,6 +43,11 @@
   color: var(--muted);
   cursor: pointer;
   transition: color 0.14s ease, background 0.14s ease;
+}
+.close::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
 }
 .close:hover {
   color: var(--ink);

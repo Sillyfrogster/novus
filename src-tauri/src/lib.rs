@@ -1,3 +1,4 @@
+mod backup;
 mod commands;
 mod db;
 mod error;
@@ -5,15 +6,16 @@ mod import;
 mod storage;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use db::Db;
 use storage::Storage;
 use tauri::Manager;
 
 pub struct Novus {
-    pub storage: Storage,
-    pub db: Db,
+    pub storage: Arc<Storage>,
+    pub db: Arc<Db>,
+    pub content_gate: Arc<RwLock<()>>,
 }
 
 pub struct ZoomGuard(pub Arc<AtomicBool>);
@@ -30,7 +32,11 @@ pub fn run() {
         .setup(move |app| {
             let storage = Storage::initialize(app.handle())?;
             let db = Db::open(&storage.db_path(), || storage.remove_legacy_voice_data())?;
-            app.manage(Novus { storage, db });
+            app.manage(Novus {
+                storage: Arc::new(storage),
+                db: Arc::new(db),
+                content_gate: Arc::new(RwLock::new(())),
+            });
 
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {
@@ -53,6 +59,13 @@ pub fn run() {
             commands::list_books,
             commands::library_count,
             commands::storage_root,
+            commands::create_library_backup,
+            commands::prepare_library_restore,
+            commands::commit_library_restore,
+            commands::cancel_library_restore,
+            commands::library_restore_status,
+            commands::finish_library_restore,
+            commands::rollback_library_restore,
             commands::import_books,
             commands::remove_book,
             commands::book_toc,

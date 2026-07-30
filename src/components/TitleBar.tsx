@@ -7,7 +7,11 @@ import styles from "./TitleBar.module.css";
 
 const appWindow = getCurrentWindow();
 
-export function TitleBar() {
+interface TitleBarProps {
+  operationsEnabled?: boolean;
+}
+
+export function TitleBar({ operationsEnabled = true }: TitleBarProps) {
   const appTheme = useLibrary((s) => s.appTheme);
   const toggleTheme = useLibrary((s) => s.toggleTheme);
   const view = useLibrary((s) => s.view);
@@ -32,16 +36,18 @@ export function TitleBar() {
         <button
           type="button"
           className={styles.btn}
-          title="About Novus"
+          title={operationsEnabled ? "About Novus" : "Available after library recovery"}
           onClick={() => openAbout()}
+          disabled={!operationsEnabled}
         >
           <Info size={15} strokeWidth={1.7} />
         </button>
         <button
           type="button"
           className={styles.btn}
-          title="Toggle theme"
+          title={operationsEnabled ? "Toggle theme" : "Available after library recovery"}
           onClick={toggleTheme}
+          disabled={!operationsEnabled}
         >
           {isDark ? <Moon size={16} strokeWidth={1.7} /> : <Sun size={16} strokeWidth={1.7} />}
         </button>

@@ -59,6 +59,7 @@
   color: var(--faint);
 }
 .close {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -71,6 +72,11 @@
   color: var(--muted);
   cursor: pointer;
   transition: color 0.14s ease, background 0.14s ease;
+}
+.close::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
 }
 .close:hover {
   color: var(--ink);
@@ -128,6 +134,7 @@
 }
 .primaryBtn,
 .ghostBtn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -138,6 +145,12 @@
   font-weight: 500;
   cursor: pointer;
   transition: background 0.16s ease, filter 0.16s ease, opacity 0.16s ease;
+}
+.primaryBtn::after,
+.ghostBtn::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
 }
 .primaryBtn {
   background: var(--accent);
@@ -160,6 +173,11 @@
   opacity: 0.55;
   cursor: default;
 }
+.primaryBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  filter: none;
+}
 .primaryBtn:focus-visible,
 .ghostBtn:focus-visible {
   outline: 2px solid var(--accent);
@@ -180,6 +198,45 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--faint);
+}
+.libraryCopy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.libraryCopy .sectionTitle {
+  margin-bottom: 9px;
+}
+.libraryCopyText {
+  max-width: 39ch;
+  min-height: 3.1em;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.libraryCopyText[data-tone="quiet"] {
+  color: var(--faint);
+}
+.libraryCopyText[data-tone="error"] {
+  color: var(--danger-text);
+}
+.libraryCopyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 14px;
+}
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 .releases {
   list-style: none;

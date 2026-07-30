@@ -7,6 +7,7 @@ import { useLibrary } from "../../store/library";
 import { useUpdate } from "../../store/update";
 import { Mark } from "../Mark";
 import styles from "./AboutPanel.module.css";
+import { LibraryCopyRow } from "./LibraryCopyRow";
 
 const KIND_LABEL: Record<ChangeKind, string> = {
   new: "New",
@@ -55,6 +56,10 @@ export function AboutPanel() {
       </p>
 
       <UpdateRow />
+
+      <div className={styles.divider} />
+
+      <LibraryCopyRow />
 
       <div className={styles.divider} />
 

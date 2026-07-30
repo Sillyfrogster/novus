@@ -1,10 +1,14 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Mutex;
 
-use rusqlite::Connection;
+use rusqlite::config::DbConfig;
+use rusqlite::{Connection, DatabaseName, OpenFlags};
 use serde::Serialize;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
+
+pub const SCHEMA_VERSION: i64 = 6;
 
 pub fn now_seconds() -> i64 {
     std::time::SystemTime::now()
@@ -148,10 +152,15 @@ impl Db {
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "trusted_schema", "OFF")?;
         let db = Self {
             conn: Mutex::new(conn),
         };
         db.migrate(remove_legacy_voice_data)?;
+        db.conn
+            .lock()
+            .expect("db mutex poisoned")
+            .set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
         Ok(db)
     }
 
@@ -160,11 +169,12 @@ impl Db {
     where
         F: FnOnce() -> AppResult<()>,
     {
-        let conn = self.conn.lock().expect("db mutex poisoned");
-        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        let mut conn = self.conn.lock().expect("db mutex poisoned");
+        let transaction = conn.transaction()?;
+        let version: i64 = transaction.query_row("PRAGMA user_version", [], |r| r.get(0))?;
 
         if version < 1 {
-            conn.execute_batch(
+            transaction.execute_batch(
                 "CREATE TABLE books (
                     id          TEXT PRIMARY KEY,
                     title       TEXT NOT NULL,
@@ -188,7 +198,7 @@ impl Db {
         }
 
         if version < 2 {
-            conn.execute_batch(
+            transaction.execute_batch(
                 "CREATE TABLE collections (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
                     name        TEXT NOT NULL,
@@ -213,14 +223,14 @@ impl Db {
         }
 
         if version < 3 {
-            conn.execute_batch(
+            transaction.execute_batch(
                 "ALTER TABLE books ADD COLUMN description TEXT;
                  PRAGMA user_version = 3;",
             )?;
         }
 
         if version < 4 {
-            conn.execute_batch(
+            transaction.execute_batch(
                 "CREATE TABLE highlights (
                     id             TEXT PRIMARY KEY,
                     book_id        TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -241,7 +251,7 @@ impl Db {
         }
 
         if version < 5 {
-            conn.execute_batch(
+            transaction.execute_batch(
                 "ALTER TABLE reading_sessions ADD COLUMN uuid TEXT;
                  ALTER TABLE reading_sessions ADD COLUMN active_seconds INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE reading_sessions ADD COLUMN pages_read INTEGER NOT NULL DEFAULT 0;
@@ -256,10 +266,22 @@ impl Db {
 
         if version < 6 {
             remove_legacy_voice_data()?;
-            conn.execute_batch("PRAGMA user_version = 6;")?;
+            transaction.execute_batch("PRAGMA user_version = 6;")?;
         }
 
+        transaction.commit()?;
         Ok(())
+    }
+
+    pub fn backup_to(&self, path: &Path) -> AppResult<()> {
+        let conn = self.conn.lock().expect("db mutex poisoned");
+        conn.backup(DatabaseName::Main, path, None)?;
+        Ok(())
+    }
+
+    pub fn validate_file(path: &Path) -> AppResult<i64> {
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        validate_connection(&conn)
     }
 
     /// All books, newest first, with reading progress joined in.
@@ -745,6 +767,439 @@ impl Db {
     }
 }
 
+fn validate_connection(conn: &Connection) -> AppResult<i64> {
+    conn.pragma_update(None, "trusted_schema", "OFF")?;
+    conn.pragma_update(None, "query_only", "ON")?;
+    conn.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
+
+    let integrity: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+    if integrity != "ok" {
+        return Err(AppError::Other(format!(
+            "The library database is damaged: {integrity}"
+        )));
+    }
+
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if !(1..=SCHEMA_VERSION).contains(&version) {
+        return Err(AppError::Other(format!(
+            "This backup uses an unsupported library version ({version})"
+        )));
+    }
+
+    validate_schema_objects(conn, version)?;
+
+    let foreign_key_errors: i64 =
+        conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+            row.get(0)
+        })?;
+    if foreign_key_errors != 0 {
+        return Err(AppError::Other(
+            "The library database contains broken references".to_string(),
+        ));
+    }
+
+    Ok(version)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ExpectedColumn {
+    name: &'static str,
+    declared_type: &'static str,
+    not_null: bool,
+    default_value: Option<&'static str>,
+    primary_key_position: i64,
+}
+
+#[derive(Clone, Copy)]
+struct ExpectedIndex {
+    name: &'static str,
+    table: &'static str,
+    unique: bool,
+    columns: &'static [&'static str],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct ExpectedForeignKey {
+    from: &'static str,
+    table: &'static str,
+    to: &'static str,
+    on_delete: &'static str,
+}
+
+const BOOK_COLUMNS_V1: &[ExpectedColumn] = &[
+    column("id", "TEXT", false, None, 1),
+    column("title", "TEXT", true, None, 0),
+    column("author", "TEXT", true, None, 0),
+    column("format", "TEXT", true, None, 0),
+    column("rel_path", "TEXT", true, None, 0),
+    column("cover_path", "TEXT", false, None, 0),
+    column("page_count", "INTEGER", false, None, 0),
+    column("language", "TEXT", false, None, 0),
+    column("file_size", "INTEGER", true, None, 0),
+    column("added_at", "INTEGER", true, None, 0),
+];
+const BOOK_COLUMNS_V3: &[ExpectedColumn] = &[
+    column("id", "TEXT", false, None, 1),
+    column("title", "TEXT", true, None, 0),
+    column("author", "TEXT", true, None, 0),
+    column("format", "TEXT", true, None, 0),
+    column("rel_path", "TEXT", true, None, 0),
+    column("cover_path", "TEXT", false, None, 0),
+    column("page_count", "INTEGER", false, None, 0),
+    column("language", "TEXT", false, None, 0),
+    column("file_size", "INTEGER", true, None, 0),
+    column("added_at", "INTEGER", true, None, 0),
+    column("description", "TEXT", false, None, 0),
+];
+const READING_STATE_COLUMNS: &[ExpectedColumn] = &[
+    column("book_id", "TEXT", false, None, 1),
+    column("locator", "TEXT", false, None, 0),
+    column("progress", "REAL", true, Some("0"), 0),
+    column("last_read_at", "INTEGER", false, None, 0),
+];
+const COLLECTION_COLUMNS: &[ExpectedColumn] = &[
+    column("id", "INTEGER", false, None, 1),
+    column("name", "TEXT", true, None, 0),
+    column("created_at", "INTEGER", true, None, 0),
+];
+const COLLECTION_BOOK_COLUMNS: &[ExpectedColumn] = &[
+    column("collection_id", "INTEGER", true, None, 1),
+    column("book_id", "TEXT", true, None, 2),
+];
+const SESSION_COLUMNS_V2: &[ExpectedColumn] = &[
+    column("id", "INTEGER", false, None, 1),
+    column("book_id", "TEXT", true, None, 0),
+    column("started_at", "INTEGER", true, None, 0),
+    column("ended_at", "INTEGER", true, None, 0),
+    column("seconds", "INTEGER", true, None, 0),
+    column("pages", "INTEGER", true, Some("0"), 0),
+];
+const SESSION_COLUMNS_V5: &[ExpectedColumn] = &[
+    column("id", "INTEGER", false, None, 1),
+    column("book_id", "TEXT", true, None, 0),
+    column("started_at", "INTEGER", true, None, 0),
+    column("ended_at", "INTEGER", true, None, 0),
+    column("seconds", "INTEGER", true, None, 0),
+    column("pages", "INTEGER", true, Some("0"), 0),
+    column("uuid", "TEXT", false, None, 0),
+    column("active_seconds", "INTEGER", true, Some("0"), 0),
+    column("pages_read", "INTEGER", true, Some("0"), 0),
+    column("median_page_ms", "INTEGER", true, Some("0"), 0),
+    column("start_fraction", "REAL", true, Some("0"), 0),
+    column("end_fraction", "REAL", true, Some("0"), 0),
+];
+const HIGHLIGHT_COLUMNS: &[ExpectedColumn] = &[
+    column("id", "TEXT", false, None, 1),
+    column("book_id", "TEXT", true, None, 0),
+    column("cfi", "TEXT", true, None, 0),
+    column("text", "TEXT", true, None, 0),
+    column("chapter_label", "TEXT", false, None, 0),
+    column("chapter_href", "TEXT", false, None, 0),
+    column("section_index", "INTEGER", true, None, 0),
+    column("location", "INTEGER", false, None, 0),
+    column("color", "TEXT", true, None, 0),
+    column("note", "TEXT", false, None, 0),
+    column("created_at", "INTEGER", true, None, 0),
+];
+
+const fn column(
+    name: &'static str,
+    declared_type: &'static str,
+    not_null: bool,
+    default_value: Option<&'static str>,
+    primary_key_position: i64,
+) -> ExpectedColumn {
+    ExpectedColumn {
+        name,
+        declared_type,
+        not_null,
+        default_value,
+        primary_key_position,
+    }
+}
+
+fn validate_schema_objects(conn: &Connection, version: i64) -> AppResult<()> {
+    let tables = expected_tables(version);
+    let indexes = expected_indexes(version);
+    let expected_table_names = tables
+        .iter()
+        .map(|(name, _)| *name)
+        .chain((version >= 2).then_some("sqlite_sequence"))
+        .collect::<BTreeSet<_>>();
+    let expected_index_names = expected_auto_indexes(version)
+        .into_iter()
+        .chain(indexes.iter().map(|index| index.name))
+        .collect::<BTreeSet<_>>();
+    let mut table_names = BTreeSet::new();
+    let mut index_names = BTreeSet::new();
+
+    let mut statement =
+        conn.prepare("SELECT type, name, COALESCE(sql, '') FROM sqlite_schema ORDER BY name")?;
+    let objects = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    for (kind, name, sql) in objects {
+        match kind.as_str() {
+            "table" if expected_table_names.contains(name.as_str()) => {
+                table_names.insert(name);
+            }
+            "index" if expected_index_names.contains(name.as_str()) => {
+                index_names.insert(name);
+            }
+            _ => return Err(invalid_schema()),
+        }
+        if sql.to_ascii_lowercase().contains("create virtual table") {
+            return Err(invalid_schema());
+        }
+    }
+
+    if table_names
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>()
+        != expected_table_names
+        || index_names
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+            != expected_index_names
+    {
+        return Err(invalid_schema());
+    }
+
+    for (table, columns) in tables {
+        validate_columns(conn, table, columns)?;
+        validate_foreign_keys(conn, table, expected_foreign_keys(table))?;
+    }
+    for index in indexes {
+        validate_index(conn, index)?;
+    }
+    Ok(())
+}
+
+fn expected_tables(version: i64) -> Vec<(&'static str, &'static [ExpectedColumn])> {
+    let mut tables = vec![
+        (
+            "books",
+            if version >= 3 {
+                BOOK_COLUMNS_V3
+            } else {
+                BOOK_COLUMNS_V1
+            },
+        ),
+        ("reading_state", READING_STATE_COLUMNS),
+    ];
+    if version >= 2 {
+        tables.extend([
+            ("collections", COLLECTION_COLUMNS),
+            ("collection_books", COLLECTION_BOOK_COLUMNS),
+            (
+                "reading_sessions",
+                if version >= 5 {
+                    SESSION_COLUMNS_V5
+                } else {
+                    SESSION_COLUMNS_V2
+                },
+            ),
+        ]);
+    }
+    if version >= 4 {
+        tables.push(("highlights", HIGHLIGHT_COLUMNS));
+    }
+    tables
+}
+
+fn expected_auto_indexes(version: i64) -> Vec<&'static str> {
+    let mut indexes = vec![
+        "sqlite_autoindex_books_1",
+        "sqlite_autoindex_reading_state_1",
+    ];
+    if version >= 2 {
+        indexes.push("sqlite_autoindex_collection_books_1");
+    }
+    if version >= 4 {
+        indexes.push("sqlite_autoindex_highlights_1");
+    }
+    indexes
+}
+
+fn expected_indexes(version: i64) -> Vec<ExpectedIndex> {
+    let mut indexes = Vec::new();
+    if version >= 2 {
+        indexes.push(ExpectedIndex {
+            name: "idx_sessions_started",
+            table: "reading_sessions",
+            unique: false,
+            columns: &["started_at"],
+        });
+    }
+    if version >= 4 {
+        indexes.push(ExpectedIndex {
+            name: "idx_highlights_book",
+            table: "highlights",
+            unique: false,
+            columns: &["book_id", "section_index", "location"],
+        });
+    }
+    if version >= 5 {
+        indexes.extend([
+            ExpectedIndex {
+                name: "idx_sessions_uuid",
+                table: "reading_sessions",
+                unique: true,
+                columns: &["uuid"],
+            },
+            ExpectedIndex {
+                name: "idx_sessions_book",
+                table: "reading_sessions",
+                unique: false,
+                columns: &["book_id"],
+            },
+        ]);
+    }
+    indexes
+}
+
+fn expected_foreign_keys(table: &str) -> &'static [ExpectedForeignKey] {
+    match table {
+        "reading_state" => &[ExpectedForeignKey {
+            from: "book_id",
+            table: "books",
+            to: "id",
+            on_delete: "CASCADE",
+        }],
+        "collection_books" => &[
+            ExpectedForeignKey {
+                from: "book_id",
+                table: "books",
+                to: "id",
+                on_delete: "CASCADE",
+            },
+            ExpectedForeignKey {
+                from: "collection_id",
+                table: "collections",
+                to: "id",
+                on_delete: "CASCADE",
+            },
+        ],
+        "reading_sessions" | "highlights" => &[ExpectedForeignKey {
+            from: "book_id",
+            table: "books",
+            to: "id",
+            on_delete: "CASCADE",
+        }],
+        _ => &[],
+    }
+}
+
+fn validate_columns(conn: &Connection, table: &str, expected: &[ExpectedColumn]) -> AppResult<()> {
+    let mut statement = conn.prepare(&format!("PRAGMA table_xinfo(\"{table}\")"))?;
+    let columns = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)? != 0,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, i64>(6)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    if columns.len() != expected.len() {
+        return Err(invalid_schema());
+    }
+    for (actual, expected) in columns.iter().zip(expected) {
+        if actual.0 != expected.name
+            || actual.1 != expected.declared_type
+            || actual.2 != expected.not_null
+            || actual.3.as_deref() != expected.default_value
+            || actual.4 != expected.primary_key_position
+            || actual.5 != 0
+        {
+            return Err(invalid_schema());
+        }
+    }
+    Ok(())
+}
+
+fn validate_index(conn: &Connection, expected: ExpectedIndex) -> AppResult<()> {
+    let mut statement = conn.prepare(&format!("PRAGMA index_list(\"{}\")", expected.table))?;
+    let details = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)? != 0,
+                row.get::<_, i64>(4)? != 0,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .find(|(name, _, _)| name == expected.name)
+        .ok_or_else(invalid_schema)?;
+    if details.1 != expected.unique || details.2 {
+        return Err(invalid_schema());
+    }
+
+    let mut statement = conn.prepare(&format!("PRAGMA index_info(\"{}\")", expected.name))?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(2))?
+        .collect::<Result<Vec<_>, _>>()?;
+    if columns
+        .iter()
+        .map(String::as_str)
+        .ne(expected.columns.iter().copied())
+    {
+        return Err(invalid_schema());
+    }
+    Ok(())
+}
+
+fn validate_foreign_keys(
+    conn: &Connection,
+    table: &str,
+    expected: &[ExpectedForeignKey],
+) -> AppResult<()> {
+    let mut statement = conn.prepare(&format!("PRAGMA foreign_key_list(\"{table}\")"))?;
+    let mut foreign_keys = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(6)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    foreign_keys.sort();
+    let mut expected = expected
+        .iter()
+        .map(|key| {
+            (
+                key.from.to_string(),
+                key.table.to_string(),
+                key.to.to_string(),
+                key.on_delete.to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+    expected.sort();
+    if foreign_keys != expected {
+        return Err(invalid_schema());
+    }
+    Ok(())
+}
+
+fn invalid_schema() -> AppError {
+    AppError::Other("The library database structure is incomplete or has changed".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -798,5 +1253,177 @@ mod tests {
         assert_eq!(version, 6);
         drop(connection);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn migrations_roll_back_together() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("novus.db");
+
+        let result = Db::open(&path, || {
+            Err(AppError::Other(
+                "The legacy cleanup could not finish".to_string(),
+            ))
+        });
+
+        assert!(result.is_err());
+        let connection = Connection::open(path).unwrap();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        let tables: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema
+                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, 0);
+        assert_eq!(tables, 0);
+    }
+
+    #[test]
+    fn backup_validation_rejects_schema_triggers() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("novus.db");
+        let db = Db::open(&path, || Ok(())).unwrap();
+        drop(db);
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TRIGGER unexpected_book_change
+                 AFTER INSERT ON books
+                 BEGIN
+                   SELECT 1;
+                 END;",
+            )
+            .unwrap();
+        drop(connection);
+
+        let error = Db::validate_file(&path).unwrap_err();
+
+        assert!(error.to_string().contains("structure is incomplete"));
+    }
+
+    #[test]
+    fn backup_validation_rejects_an_incomplete_current_schema() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("novus.db");
+        let db = Db::open(&path, || Ok(())).unwrap();
+        drop(db);
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA foreign_keys = OFF;
+                 DROP TABLE highlights;",
+            )
+            .unwrap();
+        drop(connection);
+
+        let error = Db::validate_file(&path).unwrap_err();
+
+        assert!(error.to_string().contains("structure is incomplete"));
+    }
+
+    #[test]
+    fn backup_validation_rejects_missing_current_columns_and_indexes() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing_column = temp.path().join("missing-column.db");
+        let missing_index = temp.path().join("missing-index.db");
+
+        let db = Db::open(&missing_column, || Ok(())).unwrap();
+        drop(db);
+        let connection = Connection::open(&missing_column).unwrap();
+        connection
+            .execute_batch("ALTER TABLE books DROP COLUMN description;")
+            .unwrap();
+        drop(connection);
+        assert!(Db::validate_file(&missing_column).is_err());
+
+        let db = Db::open(&missing_index, || Ok(())).unwrap();
+        drop(db);
+        let connection = Connection::open(&missing_index).unwrap();
+        connection
+            .execute_batch("DROP INDEX idx_sessions_book;")
+            .unwrap();
+        drop(connection);
+        assert!(Db::validate_file(&missing_index).is_err());
+    }
+
+    #[test]
+    fn backup_validation_accepts_the_original_schema() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("novus.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE books (
+                    id          TEXT PRIMARY KEY,
+                    title       TEXT NOT NULL,
+                    author      TEXT NOT NULL,
+                    format      TEXT NOT NULL,
+                    rel_path    TEXT NOT NULL,
+                    cover_path  TEXT,
+                    page_count  INTEGER,
+                    language    TEXT,
+                    file_size   INTEGER NOT NULL,
+                    added_at    INTEGER NOT NULL
+                 );
+                 CREATE TABLE reading_state (
+                    book_id           TEXT PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
+                    locator           TEXT,
+                    progress          REAL NOT NULL DEFAULT 0,
+                    last_read_at      INTEGER
+                 );
+                 PRAGMA user_version = 1;",
+            )
+            .unwrap();
+        drop(connection);
+
+        assert_eq!(Db::validate_file(&path).unwrap(), 1);
+    }
+
+    #[test]
+    fn backup_validation_accepts_each_supported_schema() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("novus.db");
+        let db = Db::open(&path, || Ok(())).unwrap();
+        drop(db);
+        let connection = Connection::open(&path).unwrap();
+
+        connection.pragma_update(None, "user_version", 5).unwrap();
+        assert_eq!(Db::validate_file(&path).unwrap(), 5);
+
+        connection
+            .execute_batch(
+                "DROP INDEX idx_sessions_uuid;
+                 DROP INDEX idx_sessions_book;
+                 ALTER TABLE reading_sessions DROP COLUMN end_fraction;
+                 ALTER TABLE reading_sessions DROP COLUMN start_fraction;
+                 ALTER TABLE reading_sessions DROP COLUMN median_page_ms;
+                 ALTER TABLE reading_sessions DROP COLUMN pages_read;
+                 ALTER TABLE reading_sessions DROP COLUMN active_seconds;
+                 ALTER TABLE reading_sessions DROP COLUMN uuid;
+                 PRAGMA user_version = 4;",
+            )
+            .unwrap();
+        assert_eq!(Db::validate_file(&path).unwrap(), 4);
+
+        connection
+            .execute_batch(
+                "DROP TABLE highlights;
+                 PRAGMA user_version = 3;",
+            )
+            .unwrap();
+        assert_eq!(Db::validate_file(&path).unwrap(), 3);
+
+        connection
+            .execute_batch(
+                "ALTER TABLE books DROP COLUMN description;
+                 PRAGMA user_version = 2;",
+            )
+            .unwrap();
+        assert_eq!(Db::validate_file(&path).unwrap(), 2);
     }
 }

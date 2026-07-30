@@ -71,6 +71,14 @@
   background: var(--surface-2);
   color: var(--ink);
 }
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.btn:disabled:hover {
+  background: transparent;
+  color: var(--muted);
+}
 .btn.close:hover {
   background: #d6403f;
   color: #fff;

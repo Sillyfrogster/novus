@@ -18,6 +18,12 @@ import type { AppTheme, Book, Collection, InsightsData, View } from "../lib/type
 const THEME_KEY = "novus.appTheme";
 const PROFILE_KEY = "novus.profileName";
 
+export interface AppNotice {
+  text: string;
+  tone: "error" | "success";
+  persistent: boolean;
+}
+
 function initialTheme(): AppTheme {
   const stored = localStorage.getItem(THEME_KEY);
   return stored === "light" ? "light" : "dark";
@@ -44,6 +50,7 @@ interface LibraryState {
   loading: boolean;
   importing: boolean;
   error: string | null;
+  appNotice: AppNotice | null;
 
   toggleTheme: () => void;
   openAbout: (highlightSince?: string | null) => void;
@@ -58,6 +65,8 @@ interface LibraryState {
   removeBookById: (id: string) => Promise<void>;
   resetProgress: (id: string) => Promise<void>;
   clearError: () => void;
+  showAppNotice: (notice: AppNotice) => void;
+  clearAppNotice: () => void;
 
   selectCollection: (id: number | null) => void;
   addCollection: (name: string) => Promise<void>;
@@ -83,6 +92,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   loading: true,
   importing: false,
   error: null,
+  appNotice: null,
 
   toggleTheme: () =>
     set((s) => {
@@ -117,7 +127,11 @@ export const useLibrary = create<LibraryState>((set, get) => ({
       const insights = await insightsData();
       set({ insights, insightsLoading: false });
     } catch (e) {
-      set({ error: messageOf(e), insightsLoading: false, view: "library" });
+      set({
+        error: messageOf(e),
+        insightsLoading: false,
+        view: "library",
+      });
     }
   },
 
@@ -158,7 +172,9 @@ export const useLibrary = create<LibraryState>((set, get) => ({
       const books = await listBooks();
       const error =
         summary.failed.length > 0
-          ? `Could not import ${summary.failed.length} file(s)`
+          ? summary.failed.length === 1
+            ? "Novus could not import one file."
+            : `Novus could not import ${summary.failed.length} files.`
           : null;
       set({ books, importing: false, error });
     } catch (e) {
@@ -193,6 +209,8 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+  showAppNotice: (notice) => set({ appNotice: notice }),
+  clearAppNotice: () => set({ appNotice: null }),
 
   selectCollection: (id) => set({ selectedCollectionId: id }),
 

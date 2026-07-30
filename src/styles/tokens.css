@@ -21,6 +21,7 @@
   --shelf: rgba(255, 255, 255, 0.07);
   --shelf-edge: rgba(255, 255, 255, 0.16);
   --danger: #d98a90;
+  --danger-text: #d98a90;
 
   /* reading surface | dark (default) */
   --page-bg: #0c0d10;
@@ -43,6 +44,7 @@
   --surface-2: rgba(0, 0, 0, 0.06);
   --shelf: rgba(0, 0, 0, 0.1);
   --shelf-edge: rgba(0, 0, 0, 0.18);
+  --danger-text: #963e48;
 }
 
 [data-read-theme="light"] {

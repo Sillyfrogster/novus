@@ -34,17 +34,6 @@ impl fmt::Display for FontKeyError {
 impl Error for FontKeyError {}
 
 impl FontObfuscation {
-    pub(crate) fn from_algorithm(
-        algorithm: &str,
-        package_identifier: &str,
-    ) -> Result<Option<Self>, FontKeyError> {
-        match algorithm {
-            IDPF_ALGORITHM => Ok(Some(Self::from_idpf_identifier(package_identifier))),
-            ADOBE_ALGORITHM => Self::from_adobe_identifier(package_identifier).map(Some),
-            _ => Ok(None),
-        }
-    }
-
     pub(crate) fn from_idpf_identifier(identifier: &str) -> Self {
         let normalized: String = identifier
             .chars()
@@ -131,25 +120,6 @@ mod tests {
         assert_eq!(
             FontObfuscation::from_adobe_identifier("not-a-uuid"),
             Err(FontKeyError::InvalidAdobeIdentifier)
-        );
-    }
-
-    #[test]
-    fn maps_supported_algorithms() {
-        assert!(matches!(
-            FontObfuscation::from_algorithm(IDPF_ALGORITHM, "book-id"),
-            Ok(Some(FontObfuscation::Idpf(_)))
-        ));
-        assert!(matches!(
-            FontObfuscation::from_algorithm(
-                ADOBE_ALGORITHM,
-                "00112233-4455-6677-8899-aabbccddeeff"
-            ),
-            Ok(Some(FontObfuscation::Adobe(_)))
-        ));
-        assert_eq!(
-            FontObfuscation::from_algorithm("urn:example:encryption", "book-id"),
-            Ok(None)
         );
     }
 

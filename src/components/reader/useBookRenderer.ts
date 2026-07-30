@@ -9,6 +9,7 @@ import {
 import { getReadingState, recordSession, saveReadingState } from "../../lib/ipc";
 import type { Highlight, HighlightColorKey } from "../../lib/types";
 import { loadReaderFactory } from "../../reader/loadReader";
+import { resolveContentsTarget } from "../../reader/navigation";
 import { ReadingSession } from "../../reader/readingSession";
 import type {
   ReaderSurface,
@@ -35,22 +36,6 @@ const READ_THEMES: Record<ReaderSettings["readTheme"], { bg: string; ink: string
 const DWELL_SAVE_MS = 3000;
 const UNMOUNT_SAVE_MIN_DWELL_MS = 1500;
 const SESSION_FLUSH_MS = 60_000;
-
-function hrefTail(href: string): string {
-  return href.split("/").pop() ?? href;
-}
-
-function resolveTocTarget(toc: TocItem[] | undefined, target: string): string {
-  const tail = hrefTail(target);
-  const flat: TocItem[] = [];
-  const walk = (items?: TocItem[]) =>
-    items?.forEach((item) => {
-      if (item.href) flat.push(item);
-      walk(item.subitems);
-    });
-  walk(toc);
-  return flat.find((item) => hrefTail(item.href) === tail)?.href ?? target;
-}
 
 function applyLayout(renderer: ReaderSurface, settings: ReaderSettings): void {
   renderer.setFlow(settings.layout === "paged" ? "paginated" : "scrolled");
@@ -248,7 +233,7 @@ export function useBookRenderer({
 
       const pending = useLibrary.getState().consumePendingLocator();
       if (pending) {
-        const target = resolveTocTarget(renderer.toc, pending);
+        const target = resolveContentsTarget(renderer.toc, pending);
         const reached = await renderer.goTo(target);
         if (cancelled) return;
         if (!reached) await renderer.resetPosition();

@@ -14,6 +14,77 @@
   z-index: 50;
 }
 
+.resizeHandle {
+  position: fixed;
+  z-index: 10000;
+}
+
+.north,
+.south {
+  left: 12px;
+  right: 12px;
+  height: 4px;
+}
+
+.east,
+.west {
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+}
+
+.north {
+  top: 0;
+  cursor: n-resize;
+}
+
+.east {
+  right: 0;
+  cursor: e-resize;
+}
+
+.south {
+  bottom: 0;
+  cursor: s-resize;
+}
+
+.west {
+  left: 0;
+  cursor: w-resize;
+}
+
+.northEast,
+.northWest,
+.southEast,
+.southWest {
+  width: 12px;
+  height: 12px;
+}
+
+.northEast {
+  top: 0;
+  right: 0;
+  cursor: ne-resize;
+}
+
+.northWest {
+  top: 0;
+  left: 0;
+  cursor: nw-resize;
+}
+
+.southEast {
+  right: 0;
+  bottom: 0;
+  cursor: se-resize;
+}
+
+.southWest {
+  bottom: 0;
+  left: 0;
+  cursor: sw-resize;
+}
+
 .drag {
   flex: 1;
   display: flex;

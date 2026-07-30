@@ -19,6 +19,29 @@ export interface Release {
 /** Newest first. Add a new entry at the top each release. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.4.1",
+    date: "2026-07-30",
+    title: "Faster, steadier reading",
+    notes: [
+      {
+        kind: "improved",
+        text: "Large and image-heavy EPUBs now open through a leaner reading path, with less work before the first page appears.",
+      },
+      {
+        kind: "fixed",
+        text: "Books could finish opening into a blank reader. Their pages, styles, and images now stay in place while they load.",
+      },
+      {
+        kind: "improved",
+        text: "Reader layout changes and quick page turns now settle more smoothly.",
+      },
+      {
+        kind: "fixed",
+        text: "The Novus window can now be resized from every edge and corner.",
+      },
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-07-05",
     title: "Highlight and look back",

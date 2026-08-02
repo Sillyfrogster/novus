@@ -1,3 +1,5 @@
+import { Image } from "@tauri-apps/api/image";
+import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { save } from "@tauri-apps/plugin-dialog";
 
 import { writeFile } from "./ipc";
@@ -58,6 +60,19 @@ export async function copyText(text: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+export async function copyImage(blob: Blob): Promise<boolean> {
+  let image: Image | null = null;
+  try {
+    image = await Image.fromBytes(await blob.arrayBuffer());
+    await writeImage(image);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (image) await image.close().catch(() => {});
   }
 }
 

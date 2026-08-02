@@ -12,6 +12,7 @@ import { getVisibleRange, uncollapse, type RectMapper } from "./geometry";
 import { unwrapHighlightMarks, wrapRangeInMarks } from "./highlightMarks";
 import { openPublicationBook } from "./openPublicationBook";
 import { readerCss } from "./presentation";
+import { bindSelectionEvents } from "./selectionEvents";
 import type {
   BookModel,
   BookSection,
@@ -134,6 +135,7 @@ export class NovusRenderer implements ReaderSession {
 
   #highlights: RenderHighlight[] = [];
   #newHighlightId: string | null = null;
+  #unbindSelection: (() => void) | null = null;
 
   constructor(host: HTMLElement) {
     this.#container = document.createElement("div");
@@ -345,6 +347,8 @@ export class NovusRenderer implements ReaderSession {
     this.#displayGeneration += 1;
     this.#cancelMount?.();
     this.#cancelMount = null;
+    this.#unbindSelection?.();
+    this.#unbindSelection = null;
     this.#sections[this.#index]?.unload?.();
     this.#book?.destroy?.();
     this.#container.remove();
@@ -520,14 +524,14 @@ export class NovusRenderer implements ReaderSession {
   // selection capture
 
   #bindSelection(doc: Document): void {
+    this.#unbindSelection?.();
     doc.addEventListener("mousemove", () =>
       this.#activityBatch.schedule(() => this.#emit({ type: "activity" })),
     );
-    doc.addEventListener("mousedown", () =>
-      this.#emit({ type: "selection", detail: null }),
-    );
-    doc.addEventListener("mouseup", () => this.#reportSelection(doc));
-    doc.addEventListener("keyup", () => this.#reportSelection(doc));
+    this.#unbindSelection = bindSelectionEvents(doc, {
+      onStart: () => this.#emit({ type: "selection", detail: null }),
+      onFinish: () => this.#reportSelection(doc),
+    });
   }
 
   #reportSelection(doc: Document): void {

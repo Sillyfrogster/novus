@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { MoreHorizontal, X } from "lucide-react";
 
 import { coverUrl } from "../../lib/assets";
 import { useDialog } from "../../lib/useDialog";
 import {
+  copyImage,
   copyText,
   fileStem,
   formatMarkdown,
@@ -83,11 +84,17 @@ export function DetailModal({
 
   const highlights = useHighlights((s) => s.highlights);
   const colors = useHighlights((s) => s.colors);
+  const highlightsLoading = useHighlights((s) => s.loading);
   const [tab, setTab] = useState<DetailTab>("overview");
   const [menu, setMenu] = useState<{ x: number; y: number; h: Highlight } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [undo, setUndo] = useState<Highlight | null>(null);
+  const [actionNotice, setActionNotice] = useState<{
+    text: string;
+    tone: "error" | "success";
+  } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const groups = useMemo(() => groupByChapter(highlights), [highlights]);
 
@@ -99,14 +106,19 @@ export function DetailModal({
   useEffect(
     () => () => {
       if (undoTimer.current) clearTimeout(undoTimer.current);
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
     },
     [],
   );
 
   const removeHighlight = async (h: Highlight) => {
-    await useHighlights.getState().remove(h.id);
+    const removed = await useHighlights.getState().remove(h.id);
+    if (!removed) {
+      showActionNotice("Novus could not remove this highlight.", "error");
+      return;
+    }
     setExpandedId((id) => (id === h.id ? null : id));
-    setUndo(h);
+    setUndo(removed);
     if (undoTimer.current) clearTimeout(undoTimer.current);
     undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
   };
@@ -117,12 +129,40 @@ export function DetailModal({
     setUndo(null);
   };
 
-  const shareImage = async (h: Highlight) => {
+  const showActionNotice = (text: string, tone: "error" | "success") => {
+    setActionNotice({ text, tone });
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setActionNotice(null), 4000);
+  };
+
+  const copyHighlightText = async (h: Highlight) => {
+    const copied = await copyText(formatPlain(h, book));
+    showActionNotice(
+      copied ? "Highlight copied." : "Novus could not copy this highlight.",
+      copied ? "success" : "error",
+    );
+  };
+
+  const copyHighlightImage = async (h: Highlight) => {
     try {
       const blob = await renderHighlightCard(h, book);
-      await saveImageFile(blob, `${fileStem(book)}-highlight.png`);
+      const copied = await copyImage(blob);
+      showActionNotice(
+        copied ? "Highlight image copied." : "Novus could not copy this image. Try saving it instead.",
+        copied ? "success" : "error",
+      );
     } catch {
-      // cancelled or render failure
+      showActionNotice("Novus could not create this image.", "error");
+    }
+  };
+
+  const saveHighlightImage = async (h: Highlight) => {
+    try {
+      const blob = await renderHighlightCard(h, book);
+      const saved = await saveImageFile(blob, `${fileStem(book)}-highlight.png`);
+      if (saved) showActionNotice("Highlight image saved.", "success");
+    } catch {
+      showActionNotice("Novus could not save this image. Please try again.", "error");
     }
   };
 
@@ -160,7 +200,13 @@ export function DetailModal({
           requestClose();
         }}
       >
-        <button type="button" className={styles.modalClose} onClick={requestClose} title="Close">
+        <button
+          type="button"
+          className={styles.modalClose}
+          onClick={requestClose}
+          title="Close"
+          aria-label="Close book details"
+        >
           <X size={14} strokeWidth={1.4} />
         </button>
 
@@ -217,7 +263,11 @@ export function DetailModal({
 
           {tab === "highlights" && (
             <div className={styles.hlTab}>
-              {highlights.length === 0 ? (
+              {highlightsLoading ? (
+                <div className={styles.hlEmpty} role="status">
+                  <p className={styles.hlEmptyLead}>Loading highlights…</p>
+                </div>
+              ) : highlights.length === 0 ? (
                 <div className={styles.hlEmpty}>
                   <p className={styles.hlEmptyLead}>No highlights yet.</p>
                   <p className={styles.hlEmptyHint}>
@@ -229,47 +279,58 @@ export function DetailModal({
                   <section key={`${group.label}-${gi}`} className={styles.hlGroup}>
                     <div className={styles.hlChapter}>{group.label}</div>
                     {group.items.map((h) => (
-                      <div key={h.id} className={styles.hlRow}>
-                        <button
-                          type="button"
-                          className={styles.hlMain}
-                          onClick={() => onRead(book, h.cfi)}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            setMenu({ x: e.clientX, y: e.clientY, h });
-                          }}
-                          title="Open at this highlight  (right-click for more)"
-                        >
-                          <span
-                            className={styles.hlTick}
-                            style={{ background: colors[h.color]?.color ?? colors.slate.color }}
-                            aria-hidden="true"
-                          />
-                          <span className={styles.hlText}>{h.text}</span>
-                        </button>
+                      <div
+                        key={h.id}
+                        className={styles.hlRow}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          setMenu({ x: event.clientX, y: event.clientY, h });
+                        }}
+                      >
+                        <div className={styles.hlRowTop}>
+                          <button
+                            type="button"
+                            className={styles.hlMain}
+                            onClick={() => onRead(book, h.cfi)}
+                            title="Open at this highlight"
+                          >
+                            <span
+                              className={styles.hlTick}
+                              style={{ background: colors[h.color]?.color ?? colors.slate.color }}
+                              aria-hidden="true"
+                            />
+                            <span className={styles.hlText}>{h.text}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.hlMore}
+                            aria-label="More actions for this highlight"
+                            title="More actions"
+                            onClick={(event) => {
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              setMenu({ x: rect.right, y: rect.bottom + 4, h });
+                            }}
+                          >
+                            <MoreHorizontal size={16} strokeWidth={1.7} />
+                          </button>
+                        </div>
                         {expandedId === h.id && (
                           <dl className={styles.hlDetails}>
-                            <div>
-                              <dt>When</dt>
-                              <dd>{highlightDate(h.createdAt)}</dd>
-                            </div>
-                            <div>
-                              <dt>Color</dt>
-                              <dd>{colors[h.color]?.label ?? h.color}</dd>
-                            </div>
-                            <div>
-                              <dt>Where</dt>
-                              <dd>
-                                {[h.chapterLabel?.trim(), h.location != null ? `Location ${h.location + 1}` : null]
-                                  .filter(Boolean)
-                                  .join(" · ") || "—"}
-                              </dd>
-                            </div>
+                            <dt>When</dt>
+                            <dd>{highlightDate(h.createdAt)}</dd>
+                            <dt>Color</dt>
+                            <dd>{colors[h.color]?.label ?? h.color}</dd>
+                            <dt>Where</dt>
+                            <dd>
+                              {[h.chapterLabel?.trim(), h.location != null ? `Location ${h.location + 1}` : null]
+                                .filter(Boolean)
+                                .join(" · ") || "—"}
+                            </dd>
                             {h.note && (
-                              <div>
+                              <>
                                 <dt>Why</dt>
                                 <dd>{h.note}</dd>
-                              </div>
+                              </>
                             )}
                           </dl>
                         )}
@@ -281,33 +342,56 @@ export function DetailModal({
             </div>
           )}
         </div>
+
+        {actionNotice && (
+          <div
+            className={styles.hlNotice}
+            data-tone={actionNotice.tone}
+            role={actionNotice.tone === "error" ? "alert" : "status"}
+          >
+            {actionNotice.text}
+          </div>
+        )}
+
+        {undo && (
+          <div className={styles.undo} role="status">
+            Highlight removed
+            <button type="button" className={styles.undoBtn} onClick={restoreHighlight}>
+              Undo
+            </button>
+          </div>
+        )}
       </dialog>
 
       {menu && (
         <HighlightContextMenu
           x={menu.x}
           y={menu.y}
-          onDetails={() => setExpandedId((id) => (id === menu.h.id ? null : menu.h.id))}
-          onCopy={() => copyText(formatPlain(menu.h, book))}
-          onShareImage={() => shareImage(menu.h)}
+          onDetails={() =>
+            setExpandedId((id) => (id === menu.h.id ? null : menu.h.id))
+          }
+          onCopy={() => copyHighlightText(menu.h)}
+          onCopyImage={() => copyHighlightImage(menu.h)}
+          onSaveImage={() => saveHighlightImage(menu.h)}
           onExportMarkdown={() =>
-            saveTextFile(formatMarkdown(menu.h, book), `${fileStem(book)}-highlight.md`, "Markdown", "md")
+            saveTextFile(
+              formatMarkdown(menu.h, book),
+              `${fileStem(book)}-highlight.md`,
+              "Markdown",
+              "md",
+            )
           }
           onExportObsidian={() =>
-            saveTextFile(formatObsidian(menu.h, book), `${fileStem(book)}-highlight.md`, "Markdown", "md")
+            saveTextFile(
+              formatObsidian(menu.h, book),
+              `${fileStem(book)}-highlight.md`,
+              "Markdown",
+              "md",
+            )
           }
           onDelete={() => removeHighlight(menu.h)}
           onClose={() => setMenu(null)}
         />
-      )}
-
-      {undo && (
-        <div className={styles.undo} role="status">
-          Highlight removed
-          <button type="button" className={styles.undoBtn} onClick={restoreHighlight}>
-            Undo
-          </button>
-        </div>
       )}
     </>
   );

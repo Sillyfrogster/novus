@@ -433,7 +433,14 @@
 .hlRow:last-child {
   border-bottom: none;
 }
+.hlRowTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
 .hlMain {
+  flex: 1;
+  min-width: 0;
   display: flex;
   gap: 13px;
   width: 100%;
@@ -445,6 +452,36 @@
   cursor: pointer;
   border-radius: 7px;
   transition: color 0.14s ease, background 0.14s ease;
+}
+.hlMore {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+.hlMore::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+}
+.hlMore:hover {
+  color: var(--ink);
+  background: var(--surface);
+}
+.hlMore:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .hlMain:hover {
   color: var(--ink);
@@ -479,9 +516,6 @@
   gap: 4px 16px;
   font-size: 12.5px;
 }
-.hlDetails > div {
-  display: contents;
-}
 .hlDetails dt {
   font-family: var(--font-mono);
   font-size: 9px;
@@ -513,7 +547,7 @@
 }
 
 .undo {
-  position: fixed;
+  position: absolute;
   left: 50%;
   bottom: 28px;
   transform: translateX(-50%);
@@ -547,8 +581,91 @@
   background: var(--surface);
 }
 
+.hlNotice {
+  position: absolute;
+  left: 50%;
+  bottom: 82px;
+  z-index: 4;
+  max-width: min(420px, calc(100% - 48px));
+  padding: 10px 14px;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 18px 44px -20px rgba(0, 0, 0, 0.74);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: center;
+  animation: nvRise 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.hlNotice[data-tone="error"] {
+  color: var(--danger-text);
+}
+
+@media (max-width: 760px) {
+  .modal {
+    width: calc(100vw - 32px);
+    height: calc(100dvh - 32px);
+  }
+  .modalCover {
+    flex-basis: 190px;
+    padding: 28px 0 28px 28px;
+  }
+  .modalBody {
+    padding: 30px 28px 28px 24px;
+  }
+  .modalTitle {
+    font-size: 30px;
+  }
+}
+
+@media (max-width: 620px) {
+  .modal {
+    width: calc(100vw - 20px);
+    height: calc(100dvh - 20px);
+    border-radius: 13px;
+  }
+  .modalCover {
+    display: none;
+  }
+  .modalBody {
+    padding: 28px 22px 24px;
+  }
+  .modalClose {
+    top: 12px;
+    right: 12px;
+  }
+  .modalEyebrow {
+    padding-right: 36px;
+  }
+  .modalTitle {
+    padding-right: 32px;
+    font-size: 28px;
+  }
+  .hlDetails {
+    grid-template-columns: 1fr;
+    gap: 2px;
+    padding-left: 24px;
+  }
+  .hlDetails dd {
+    margin-bottom: 7px;
+  }
+}
+
+@media (max-height: 660px) and (min-width: 621px) {
+  .modalCover {
+    flex-basis: 184px;
+    padding-top: 28px;
+  }
+  .modalBody {
+    padding-top: 28px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .undo {
+  .undo,
+  .hlNotice {
     animation: none;
   }
 }

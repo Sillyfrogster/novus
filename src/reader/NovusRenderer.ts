@@ -13,6 +13,7 @@ import { getVisibleRange, uncollapse, type RectMapper } from "./geometry";
 import { unwrapHighlightMarks, wrapRangeInMarks } from "./highlightMarks";
 import { openPublicationBook } from "./openPublicationBook";
 import { readerCss } from "./presentation";
+import { PUBLICATION_FRAME_SANDBOX } from "./publicationFrame";
 import { bindSelectionEvents } from "./selectionEvents";
 import type {
   BookModel,
@@ -437,7 +438,7 @@ export class NovusRenderer implements ReaderSession {
     });
     const iframe = document.createElement("iframe");
     Object.assign(iframe.style, IFRAME_STYLE);
-    iframe.setAttribute("sandbox", "allow-same-origin");
+    iframe.setAttribute("sandbox", PUBLICATION_FRAME_SANDBOX);
     iframe.setAttribute("scrolling", "no");
     element.append(iframe);
     this.#container.append(element);

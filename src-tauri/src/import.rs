@@ -85,6 +85,7 @@ fn import_one(storage: &Storage, db: &Db, path: &str) -> AppResult<Option<Book>>
 
     let staged_cover = match cover {
         Some((data, cover_ext)) => {
+            let data = crate::cover_image::optimize_imported_cover(data);
             let cover_ext = portable_cover_extension(&cover_ext, &data);
             let rel = format!("covers/{id}.{cover_ext}");
             let staged = staging.path().join("cover");

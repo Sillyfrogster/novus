@@ -6,6 +6,7 @@ import { Reader } from "./components/reader/Reader";
 import { TitleBar } from "./components/TitleBar";
 import { Toast } from "./components/Toast";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { refreshCoverUrls } from "./lib/assets";
 import { compareVersions } from "./lib/changelog";
 import { blockNativeContextMenu } from "./lib/contextMenu";
 import {
@@ -43,12 +44,23 @@ export default function App() {
   const loadLibrary = useLibrary((s) => s.loadLibrary);
   const importPaths = useLibrary((s) => s.importPaths);
   const [dropping, setDropping] = useState(false);
+  const [, redrawCovers] = useState(0);
   const [startupState, setStartupState] = useState<StartupState>("checking");
   const startupStarted = useRef(false);
 
   useZoomGuard();
 
   useEffect(() => blockNativeContextMenu(window), []);
+
+  useEffect(() => {
+    const unlisten = getCurrentWebview().listen<number>("covers-optimized", () => {
+      refreshCoverUrls();
+      redrawCovers((revision) => revision + 1);
+    });
+    return () => {
+      unlisten.then((off) => off());
+    };
+  }, []);
 
   useEffect(() => {
     if (startupStarted.current) return;
@@ -120,12 +132,18 @@ export default function App() {
               ? "Opening your library…"
               : "Restart Novus to finish recovering your library."}
           </div>
-        ) : view === "reader" ? (
-          <Reader />
-        ) : view === "insights" ? (
-          <Insights />
         ) : (
-          <Library dropping={dropping} />
+          <>
+            <div
+              className={`${styles.libraryView} ${view === "library" ? "" : styles.libraryViewHidden}`}
+              inert={view !== "library"}
+              aria-hidden={view !== "library"}
+            >
+              <Library dropping={dropping} />
+            </div>
+            {view === "reader" && <Reader />}
+            {view === "insights" && <Insights />}
+          </>
         )}
       </div>
       {startupState === "ready" && <UpdateBanner />}

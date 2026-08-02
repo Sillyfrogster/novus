@@ -16,6 +16,17 @@
   overflow: hidden;
 }
 
+.libraryView {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.libraryViewHidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .startupState {
   flex: 1;
   display: grid;

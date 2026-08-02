@@ -136,7 +136,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   },
 
   loadLibrary: async () => {
-    set({ loading: true, error: null });
+    set({ loading: get().books.length === 0, error: null });
     try {
       const [books, root, collections] = await Promise.all([
         listBooks(),

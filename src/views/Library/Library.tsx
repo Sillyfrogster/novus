@@ -17,6 +17,7 @@ import { useLibrary } from "../../store/library";
 import { DetailModal } from "./DetailModal";
 import { EmptyState } from "./EmptyState";
 import { HoverPreview } from "./HoverPreview";
+import { LibrarySkeleton } from "./LibrarySkeleton";
 import { VirtualShelf } from "./VirtualShelf";
 import styles from "./Library.module.css";
 
@@ -494,7 +495,9 @@ export function Library({ dropping }: LibraryProps) {
 
   return (
     <div className={styles.content}>
-      {loading ? null : books.length === 0 ? (
+      {loading ? (
+        <LibrarySkeleton />
+      ) : books.length === 0 ? (
         <EmptyState onAddBooks={pickAndImport} busy={importing} />
       ) : (
         <div className={styles.layout}>

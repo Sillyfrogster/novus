@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { coverUrl } from "../../lib/assets";
 import type { Book } from "../../lib/types";
 import { spineLook } from "./spineLook";
@@ -5,6 +7,14 @@ import styles from "./Library.module.css";
 
 export const CARD_W = 120;
 export const CARD_H = 180;
+
+const loadedCovers = new Set<string>();
+
+interface CoverState {
+  url: string | null;
+  ready: boolean;
+  failed: boolean;
+}
 
 interface SpineProps {
   book: Book;
@@ -27,8 +37,18 @@ export function Spine({
   progressEdge = false,
 }: SpineProps) {
   const cover = coverUrl(book, storageRoot);
+  const [coverState, setCoverState] = useState<CoverState>(() => ({
+    url: cover,
+    ready: !cover || loadedCovers.has(cover),
+    failed: false,
+  }));
   const look = spineLook(book);
   const inProgress = book.progress > 0 && book.progress < 1;
+  const currentCover =
+    coverState.url === cover
+      ? coverState
+      : { url: cover, ready: !cover || loadedCovers.has(cover), failed: false };
+  const showCover = Boolean(cover && !currentCover.failed);
 
   return (
     <button
@@ -47,13 +67,29 @@ export function Spine({
       {inProgress && !progressEdge && <span className={styles.ribbon} />}
       <div
         className={styles.cardCover}
-        style={
-          cover
-            ? { backgroundImage: `url(${cover})`, color: "transparent" }
-            : { background: look.bg, color: look.fg }
-        }
+        data-cover-ready={currentCover.ready}
+        style={showCover ? undefined : { background: look.bg, color: look.fg }}
       >
-        {!cover && (
+        {showCover && (
+          <>
+            <span className={styles.cardCoverSkeleton} aria-hidden="true" />
+            <img
+              className={styles.cardCoverImage}
+              src={cover ?? undefined}
+              alt=""
+              decoding="async"
+              draggable={false}
+              onLoad={() => {
+                if (cover) loadedCovers.add(cover);
+                setCoverState({ url: cover, ready: true, failed: false });
+              }}
+              onError={() => {
+                setCoverState({ url: cover, ready: true, failed: true });
+              }}
+            />
+          </>
+        )}
+        {!showCover && (
           <div className={styles.cardFallback}>
             <span className={styles.cardTag}>{book.format.toUpperCase()}</span>
             <span className={styles.cardTitle}>{book.title}</span>

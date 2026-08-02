@@ -24,6 +24,7 @@ sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 roxmltree = "0.20"
 tempfile = "3"
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 tauri-plugin-process = "2"
 sha1 = "0.11"
 uuid = { version = "1", features = ["v4"] }

@@ -33,4 +33,33 @@ describe("reader selection events", () => {
     expect(finishes).toBe(1);
     unbind();
   });
+
+  test("finishes when WebKit reports a pointer release", () => {
+    const document = new EventTarget();
+    let finishes = 0;
+    const unbind = bindSelectionEvents(document, {
+      onStart: () => {},
+      onFinish: () => finishes++,
+    });
+
+    document.dispatchEvent(new Event("pointerup"));
+
+    expect(finishes).toBe(1);
+    unbind();
+  });
+
+  test("coalesces pointer and mouse release events", () => {
+    const document = new EventTarget();
+    let finishes = 0;
+    const unbind = bindSelectionEvents(document, {
+      onStart: () => {},
+      onFinish: () => finishes++,
+    });
+
+    document.dispatchEvent(new Event("pointerup"));
+    document.dispatchEvent(new Event("mouseup"));
+
+    expect(finishes).toBe(1);
+    unbind();
+  });
 });

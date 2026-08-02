@@ -13,8 +13,10 @@ const SELECTION_SETTLE_MS = 60;
 export function bindSelectionEvents(
   target: SelectionEventTarget,
   { onStart, onFinish }: SelectionEventHandlers,
+  releaseTarget: SelectionEventTarget = target,
 ): () => void {
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastFinishAt = Number.NEGATIVE_INFINITY;
   const cancelPendingFinish = () => {
     if (settleTimer !== null) clearTimeout(settleTimer);
     settleTimer = null;
@@ -25,6 +27,9 @@ export function bindSelectionEvents(
   };
   const finish = () => {
     cancelPendingFinish();
+    const now = Date.now();
+    if (now - lastFinishAt < 16) return;
+    lastFinishAt = now;
     onFinish();
   };
   const finishAfterSelectionSettles = () => {
@@ -33,15 +38,23 @@ export function bindSelectionEvents(
   };
 
   target.addEventListener("mousedown", start);
-  target.addEventListener("mouseup", finish);
-  target.addEventListener("keyup", finish);
   target.addEventListener("selectionchange", finishAfterSelectionSettles);
+  releaseTarget.addEventListener("mouseup", finish);
+  releaseTarget.addEventListener("pointerup", finish);
+  releaseTarget.addEventListener("touchend", finish);
+  releaseTarget.addEventListener("dragend", finish);
+  releaseTarget.addEventListener("keyup", finish);
+  releaseTarget.addEventListener("blur", finishAfterSelectionSettles);
 
   return () => {
     cancelPendingFinish();
     target.removeEventListener("mousedown", start);
-    target.removeEventListener("mouseup", finish);
-    target.removeEventListener("keyup", finish);
     target.removeEventListener("selectionchange", finishAfterSelectionSettles);
+    releaseTarget.removeEventListener("mouseup", finish);
+    releaseTarget.removeEventListener("pointerup", finish);
+    releaseTarget.removeEventListener("touchend", finish);
+    releaseTarget.removeEventListener("dragend", finish);
+    releaseTarget.removeEventListener("keyup", finish);
+    releaseTarget.removeEventListener("blur", finishAfterSelectionSettles);
   };
 }

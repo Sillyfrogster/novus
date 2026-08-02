@@ -82,6 +82,17 @@ function installSectionPolicy(document: Document, resourceRoot: string): void {
   head.prepend(meta);
 }
 
+function stripExecutableContent(document: Document): void {
+  for (const script of document.querySelectorAll("script")) script.remove();
+  for (const element of document.querySelectorAll("*")) {
+    for (const attribute of [...element.attributes]) {
+      if (attribute.name.toLowerCase().startsWith("on")) {
+        element.removeAttribute(attribute.name);
+      }
+    }
+  }
+}
+
 function rewriteProcessingInstructions(
   document: Document,
   toResourceUrl: (reference: string) => string | null,
@@ -121,6 +132,7 @@ export function createPublicationSectionSource({
     if (url) element.setAttribute(attribute, url);
   };
 
+  stripExecutableContent(document);
   rewriteProcessingInstructions(document, toResourceUrl);
   for (const element of document.querySelectorAll("link[href]")) {
     rewriteAttribute(element, "href");

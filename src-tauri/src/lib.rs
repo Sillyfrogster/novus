@@ -66,6 +66,7 @@ pub fn run() {
                 let _ = window.with_webview(move |webview| {
                     use webkit2gtk::WebViewExt;
                     let view = webview.inner();
+                    view.connect_context_menu(|_, _, _, _| true);
                     view.connect_zoom_level_notify(move |view| {
                         if locked.load(Ordering::Relaxed) && (view.zoom_level() - 1.0).abs() > 0.001
                         {

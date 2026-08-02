@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { HIGHLIGHT_COLOR_KEYS, type HighlightColor } from "../../lib/highlightColors";
 import type { HighlightColorKey } from "../../lib/types";
+import { placeHighlightBar } from "./highlightBarPosition";
 import styles from "./HighlightBar.module.css";
 
 interface HighlightBarProps {
@@ -11,20 +12,12 @@ interface HighlightBarProps {
   onDismiss: () => void;
 }
 
-const BAR_WIDTH = 184;
-const GAP = 12;
-
-/** surfaces by the selection */
 export function HighlightBar({ rect, colors, onPick, onDismiss }: HighlightBarProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number; below: boolean } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
-    const midX = (rect.left + rect.right) / 2;
-    const left = Math.max(GAP, Math.min(window.innerWidth - BAR_WIDTH - GAP, midX - BAR_WIDTH / 2));
-    const below = rect.top < 96;
-    const top = below ? rect.bottom + GAP : rect.top - GAP;
-    setPos({ top, left, below });
+    setPos(placeHighlightBar(rect, { width: window.innerWidth, height: window.innerHeight }));
   }, [rect]);
 
   useEffect(() => {
@@ -46,7 +39,6 @@ export function HighlightBar({ rect, colors, onPick, onDismiss }: HighlightBarPr
       style={{
         top: pos.top,
         left: pos.left,
-        transform: pos.below ? "none" : "translateY(-100%)",
       }}
       onMouseDown={(e) => e.preventDefault()}
     >

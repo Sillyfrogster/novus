@@ -7,6 +7,7 @@ import { TitleBar } from "./components/TitleBar";
 import { Toast } from "./components/Toast";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { compareVersions } from "./lib/changelog";
+import { blockNativeContextMenu } from "./lib/contextMenu";
 import {
   cancelLibraryRestore,
   finishLibraryRestore,
@@ -46,6 +47,8 @@ export default function App() {
   const startupStarted = useRef(false);
 
   useZoomGuard();
+
+  useEffect(() => blockNativeContextMenu(window), []);
 
   useEffect(() => {
     if (startupStarted.current) return;

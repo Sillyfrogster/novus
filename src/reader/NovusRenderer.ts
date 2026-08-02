@@ -1,5 +1,6 @@
 import * as CFI from "../../vendor/foliate-js/epubcfi.js";
 
+import { blockNativeContextMenu } from "../lib/contextMenu";
 import type {
   ReaderDestination,
   ReaderEvent,
@@ -136,6 +137,7 @@ export class NovusRenderer implements ReaderSession {
   #highlights: RenderHighlight[] = [];
   #newHighlightId: string | null = null;
   #unbindSelection: (() => void) | null = null;
+  #unblockContextMenu: (() => void) | null = null;
 
   constructor(host: HTMLElement) {
     this.#container = document.createElement("div");
@@ -349,6 +351,8 @@ export class NovusRenderer implements ReaderSession {
     this.#cancelMount = null;
     this.#unbindSelection?.();
     this.#unbindSelection = null;
+    this.#unblockContextMenu?.();
+    this.#unblockContextMenu = null;
     this.#sections[this.#index]?.unload?.();
     this.#book?.destroy?.();
     this.#container.remove();
@@ -516,6 +520,8 @@ export class NovusRenderer implements ReaderSession {
       this.#styleEl = style;
     }
     doc.documentElement.lang ||= "";
+    this.#unblockContextMenu?.();
+    this.#unblockContextMenu = blockNativeContextMenu(doc);
     this.#handleLinks(doc);
     this.#bindSelection(doc);
     this.#renderHighlights(doc);
@@ -528,10 +534,14 @@ export class NovusRenderer implements ReaderSession {
     doc.addEventListener("mousemove", () =>
       this.#activityBatch.schedule(() => this.#emit({ type: "activity" })),
     );
-    this.#unbindSelection = bindSelectionEvents(doc, {
-      onStart: () => this.#emit({ type: "selection", detail: null }),
-      onFinish: () => this.#reportSelection(doc),
-    });
+    this.#unbindSelection = bindSelectionEvents(
+      doc,
+      {
+        onStart: () => this.#emit({ type: "selection", detail: null }),
+        onFinish: () => this.#reportSelection(doc),
+      },
+      doc.defaultView ?? doc,
+    );
   }
 
   #reportSelection(doc: Document): void {

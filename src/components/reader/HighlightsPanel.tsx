@@ -17,7 +17,7 @@ interface ChapterGroup {
   items: Highlight[];
 }
 
-/** Group highlights into runs by the chapter */
+/** Group highlights by chapter */
 function groupByChapter(highlights: Highlight[]): ChapterGroup[] {
   const groups: ChapterGroup[] = [];
   for (const h of highlights) {
@@ -32,6 +32,7 @@ function groupByChapter(highlights: Highlight[]): ChapterGroup[] {
 export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
   const highlights = useHighlights((s) => s.highlights);
   const colors = useHighlights((s) => s.colors);
+  const loading = useHighlights((s) => s.loading);
   const renameColor = useHighlights((s) => s.renameColor);
   const recolor = useHighlights((s) => s.recolor);
   const resetColorSlot = useHighlights((s) => s.resetColorSlot);
@@ -44,21 +45,28 @@ export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
     <dialog
       ref={dialogRef}
       className={styles.panel}
-      aria-label="Highlights"
+      aria-labelledby="reader-highlights-title"
       onCancel={(event) => {
         event.preventDefault();
         onClose();
       }}
     >
       <div className={styles.head}>
-        Highlights
+        <div className={styles.headCopy}>
+          <h2 id="reader-highlights-title" className={styles.title}>
+            Highlights
+          </h2>
+          <span className={styles.count}>
+            {highlights.length} saved {highlights.length === 1 ? "passage" : "passages"}
+          </span>
+        </div>
         <div className={styles.headActions}>
           <button
             type="button"
             className={`${styles.iconBtn} ${managing ? styles.iconBtnOn : ""}`}
             onClick={() => setManaging((v) => !v)}
-            title="Manage colors"
-            aria-label="Manage colors"
+            title={managing ? "Hide color settings" : "Manage colors"}
+            aria-label={managing ? "Hide color settings" : "Manage colors"}
             aria-pressed={managing}
           >
             <Settings2 size={15} strokeWidth={1.7} />
@@ -77,6 +85,10 @@ export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
 
       {managing && (
         <div className={styles.manage}>
+          <div className={styles.manageHead}>
+            <span className={styles.manageTitle}>Color palette</span>
+            <span className={styles.manageHint}>Rename or recolor each highlight style.</span>
+          </div>
           {HIGHLIGHT_COLOR_KEYS.map((key) => (
             <div key={key} className={styles.manageRow}>
               <label className={styles.swatchLabel} title="Change color">
@@ -112,8 +124,12 @@ export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
         </div>
       )}
 
-      <div className={styles.list}>
-        {highlights.length === 0 ? (
+      <div className={styles.list} aria-busy={loading}>
+        {loading ? (
+          <div className={styles.empty} role="status">
+            <p className={styles.emptyLead}>Loading highlights…</p>
+          </div>
+        ) : highlights.length === 0 ? (
           <div className={styles.empty}>
             <p className={styles.emptyLead}>No highlights yet.</p>
             <p className={styles.emptyHint}>

@@ -19,6 +19,29 @@ export interface Release {
 /** Newest first. Add a new entry at the top each release. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.4.2",
+    date: "2026-08-02",
+    title: "Highlights that hold",
+    notes: [
+      {
+        kind: "fixed",
+        text: "Highlighting and its action menu now work on Linux, and Novus no longer shows the webview's developer menu.",
+      },
+      {
+        kind: "fixed",
+        text: "Copy as image now places the quote card on the system clipboard instead of reporting a copy that never arrived.",
+      },
+      {
+        kind: "improved",
+        text: "Highlight actions now respond faster, use app-wide feedback, and fit smaller windows more naturally.",
+      },
+      {
+        kind: "improved",
+        text: "Returning from a book now restores the library immediately. Covers use far less memory and show a shelf-shaped loading state when needed.",
+      },
+    ],
+  },
+  {
     version: "0.4.1",
     date: "2026-07-30",
     title: "Faster, steadier reading",

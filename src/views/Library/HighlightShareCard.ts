@@ -7,9 +7,7 @@ import type { Book, Highlight } from "../../lib/types";
 
 const W = 1200;
 const PAD = 110;
-const DPR = 2;
 
-// canvas can't read CSS custom properties (cringe).
 const BASE = "#060608";
 const INK = "#eef1f6";
 const MUTED = "#8d909a";
@@ -26,7 +24,6 @@ async function ensureFonts(passSize: number): Promise<void> {
       document.fonts.load(`500 30px ${FONT_DISPLAY}`),
       document.fonts.load(`400 ${passSize}px ${FONT_SERIF}`),
     ]);
-    await document.fonts.ready;
   } catch {
     // Fall back to whatever is available.
   }
@@ -50,7 +47,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines;
 }
 
-export async function renderHighlightCard(h: Highlight, book: Book): Promise<Blob> {
+export async function renderHighlightCard(h: Highlight, book: Book): Promise<HTMLCanvasElement> {
   const contentW = W - PAD * 2;
   const len = h.text.length;
   const passSize = len < 140 ? 52 : len < 360 ? 42 : 34;
@@ -92,11 +89,10 @@ export async function renderHighlightCard(h: Highlight, book: Book): Promise<Blo
   const H = Math.round(y);
 
   const canvas = document.createElement("canvas");
-  canvas.width = W * DPR;
-  canvas.height = H * DPR;
-  const ctx = canvas.getContext("2d");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("canvas unavailable");
-  ctx.scale(DPR, DPR);
 
   ctx.fillStyle = BASE;
   ctx.fillRect(0, 0, W, H);
@@ -144,7 +140,14 @@ export async function renderHighlightCard(h: Highlight, book: Book): Promise<Blo
   ctx.font = `400 ${attrSize}px ${FONT_SERIF}`;
   attrLines.forEach((line, i) => ctx.fillText(line, PAD, attrTop + i * (attrSize * 1.5) + attrSize));
 
+  return canvas;
+}
+
+export function encodeHighlightCard(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("could not render image"))), "image/png"),
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("could not encode image"))),
+      "image/png",
+    ),
   );
 }

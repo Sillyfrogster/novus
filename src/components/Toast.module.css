@@ -1,19 +1,25 @@
 .toast {
   position: fixed;
+  inset: auto auto max(26px, env(safe-area-inset-bottom)) 50%;
   left: 50%;
-  bottom: 26px;
   transform: translateX(-50%);
   z-index: 300;
   display: flex;
   align-items: center;
   gap: 11px;
   max-width: min(460px, calc(100vw - 48px));
+  width: max-content;
+  margin: 0;
   padding: 12px 14px 12px 15px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 11px;
   box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.7);
   animation: nvRise 0.2s ease both;
+}
+
+.toast:popover-open {
+  display: flex;
 }
 .icon {
   flex: 0 0 auto;
@@ -57,5 +63,14 @@
 @media (prefers-reduced-motion: reduce) {
   .toast {
     animation: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .toast {
+    inset-inline: 16px;
+    width: auto;
+    max-width: none;
+    transform: none;
   }
 }

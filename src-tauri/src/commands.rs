@@ -1,7 +1,8 @@
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::backup::{
     cancel_restore, commit_restore, create_backup, finish_restore, prepare_restore,
@@ -308,6 +309,52 @@ pub fn delete_highlight(state: State<'_, Novus>, id: String) -> AppResult<()> {
 pub async fn write_file(path: String, contents: Vec<u8>) -> AppResult<()> {
     run_blocking("Novus could not save the file", move || {
         std::fs::write(&path, &contents).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn copy_highlight_image(
+    app: AppHandle,
+    request: tauri::ipc::Request<'_>,
+) -> AppResult<()> {
+    const MAX_PIXELS: u32 = 16_000_000;
+
+    let dimension = |name: &'static str| -> AppResult<u32> {
+        request
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse().ok())
+            .filter(|value| *value > 0)
+            .ok_or_else(|| AppError::Other(format!("invalid {name} header")))
+    };
+    let width = dimension("novus-image-width")?;
+    let height = dimension("novus-image-height")?;
+    let pixel_count = width
+        .checked_mul(height)
+        .filter(|count| *count <= MAX_PIXELS)
+        .ok_or_else(|| AppError::Other("highlight image is too large".to_string()))?;
+    let expected_bytes = pixel_count as usize * 4;
+    let rgba = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) if bytes.len() == expected_bytes => bytes.clone(),
+        tauri::ipc::InvokeBody::Raw(_) => {
+            return Err(AppError::Other(
+                "highlight image dimensions do not match its pixel data".to_string(),
+            ));
+        }
+        _ => {
+            return Err(AppError::Other(
+                "highlight image must use binary transfer".to_string(),
+            ));
+        }
+    };
+
+    run_blocking("Novus could not copy the highlight image", move || {
+        let image = tauri::image::Image::new_owned(rgba, width, height);
+        app.clipboard()
+            .write_image(&image)
+            .map_err(|error| AppError::Other(error.to_string()))
     })
     .await
 }

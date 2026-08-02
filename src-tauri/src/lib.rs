@@ -110,6 +110,7 @@ pub fn run() {
             commands::set_highlight_note,
             commands::delete_highlight,
             commands::write_file,
+            commands::copy_highlight_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

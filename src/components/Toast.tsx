@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { CircleAlert, CircleCheck, X } from "lucide-react";
 
 import { useLibrary } from "../store/library";
@@ -7,6 +7,7 @@ import styles from "./Toast.module.css";
 const DISMISS_MS = 6000;
 
 export function Toast() {
+  const toastRef = useRef<HTMLDivElement>(null);
   const routineError = useLibrary((s) => s.error);
   const appNotice = useLibrary((s) => s.appNotice);
   const clearError = useLibrary((s) => s.clearError);
@@ -20,11 +21,32 @@ export function Toast() {
     return () => window.clearTimeout(t);
   }, [message, appNotice, clear]);
 
+  useEffect(() => {
+    const toast = toastRef.current;
+    if (!toast || !("showPopover" in toast)) return;
+    try {
+      toast.showPopover();
+    } catch {
+      toast.removeAttribute("popover");
+    }
+    return () => {
+      try {
+        toast.hidePopover();
+      } catch {}
+    };
+  }, [message]);
+
   if (!message) return null;
   const tone = appNotice?.tone ?? "error";
 
   return (
-    <div className={styles.toast} data-tone={tone} role={tone === "error" ? "alert" : "status"}>
+    <div
+      ref={toastRef}
+      className={styles.toast}
+      data-tone={tone}
+      role={tone === "error" ? "alert" : "status"}
+      popover="manual"
+    >
       {tone === "success" ? (
         <CircleCheck className={styles.icon} size={16} strokeWidth={1.8} aria-hidden="true" />
       ) : (

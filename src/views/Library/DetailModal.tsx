@@ -15,9 +15,10 @@ import {
 } from "../../lib/highlightExport";
 import type { Book, Highlight } from "../../lib/types";
 import { useHighlights } from "../../store/highlights";
+import { useLibrary } from "../../store/library";
 import { DetailOverview } from "./DetailOverview";
 import { HighlightContextMenu } from "./HighlightContextMenu";
-import { renderHighlightCard } from "./HighlightShareCard";
+import { encodeHighlightCard, renderHighlightCard } from "./HighlightShareCard";
 import { spineLook } from "./spineLook";
 import styles from "./DetailModal.module.css";
 
@@ -89,12 +90,7 @@ export function DetailModal({
   const [menu, setMenu] = useState<{ x: number; y: number; h: Highlight } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [undo, setUndo] = useState<Highlight | null>(null);
-  const [actionNotice, setActionNotice] = useState<{
-    text: string;
-    tone: "error" | "success";
-  } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const groups = useMemo(() => groupByChapter(highlights), [highlights]);
 
@@ -106,7 +102,6 @@ export function DetailModal({
   useEffect(
     () => () => {
       if (undoTimer.current) clearTimeout(undoTimer.current);
-      if (noticeTimer.current) clearTimeout(noticeTimer.current);
     },
     [],
   );
@@ -130,9 +125,7 @@ export function DetailModal({
   };
 
   const showActionNotice = (text: string, tone: "error" | "success") => {
-    setActionNotice({ text, tone });
-    if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    noticeTimer.current = setTimeout(() => setActionNotice(null), 4000);
+    useLibrary.getState().showAppNotice({ text, tone, persistent: false });
   };
 
   const copyHighlightText = async (h: Highlight) => {
@@ -145,8 +138,12 @@ export function DetailModal({
 
   const copyHighlightImage = async (h: Highlight) => {
     try {
-      const blob = await renderHighlightCard(h, book);
-      const copied = await copyImage(blob);
+      const canvas = await renderHighlightCard(h, book);
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("canvas unavailable");
+      const copied = await copyImage(
+        context.getImageData(0, 0, canvas.width, canvas.height),
+      );
       showActionNotice(
         copied ? "Highlight image copied." : "Novus could not copy this image. Try saving it instead.",
         copied ? "success" : "error",
@@ -158,7 +155,8 @@ export function DetailModal({
 
   const saveHighlightImage = async (h: Highlight) => {
     try {
-      const blob = await renderHighlightCard(h, book);
+      const canvas = await renderHighlightCard(h, book);
+      const blob = await encodeHighlightCard(canvas);
       const saved = await saveImageFile(blob, `${fileStem(book)}-highlight.png`);
       if (saved) showActionNotice("Highlight image saved.", "success");
     } catch {
@@ -342,16 +340,6 @@ export function DetailModal({
             </div>
           )}
         </div>
-
-        {actionNotice && (
-          <div
-            className={styles.hlNotice}
-            data-tone={actionNotice.tone}
-            role={actionNotice.tone === "error" ? "alert" : "status"}
-          >
-            {actionNotice.text}
-          </div>
-        )}
 
         {undo && (
           <div className={styles.undo} role="status">

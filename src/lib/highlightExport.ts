@@ -1,5 +1,4 @@
-import { Image } from "@tauri-apps/api/image";
-import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
+import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 
 import { writeFile } from "./ipc";
@@ -63,16 +62,23 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export async function copyImage(blob: Blob): Promise<boolean> {
-  let image: Image | null = null;
+export async function copyImage(imageData: ImageData): Promise<boolean> {
   try {
-    image = await Image.fromBytes(await blob.arrayBuffer());
-    await writeImage(image);
+    const rgba = new Uint8Array(
+      imageData.data.buffer,
+      imageData.data.byteOffset,
+      imageData.data.byteLength,
+    );
+    await invoke("copy_highlight_image", rgba, {
+      headers: {
+        "novus-image-height": String(imageData.height),
+        "novus-image-width": String(imageData.width),
+      },
+    });
     return true;
-  } catch {
+  } catch (error) {
+    console.error("Could not copy highlight image", error);
     return false;
-  } finally {
-    if (image) await image.close().catch(() => {});
   }
 }
 

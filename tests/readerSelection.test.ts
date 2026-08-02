@@ -62,4 +62,23 @@ describe("reader selection events", () => {
     expect(finishes).toBe(1);
     unbind();
   });
+
+  test("finishes when an iframe document receives the release", () => {
+    const document = new EventTarget();
+    const frameWindow = new EventTarget();
+    let finishes = 0;
+    const unbind = bindSelectionEvents(
+      document,
+      {
+        onStart: () => {},
+        onFinish: () => finishes++,
+      },
+      frameWindow,
+    );
+
+    document.dispatchEvent(new Event("mouseup"));
+
+    expect(finishes).toBe(1);
+    unbind();
+  });
 });

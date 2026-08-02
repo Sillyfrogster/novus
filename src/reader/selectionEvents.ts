@@ -36,25 +36,30 @@ export function bindSelectionEvents(
     cancelPendingFinish();
     settleTimer = setTimeout(finish, SELECTION_SETTLE_MS);
   };
+  const releaseTargets = releaseTarget === target ? [target] : [target, releaseTarget];
 
   target.addEventListener("mousedown", start);
   target.addEventListener("selectionchange", finishAfterSelectionSettles);
-  releaseTarget.addEventListener("mouseup", finish);
-  releaseTarget.addEventListener("pointerup", finish);
-  releaseTarget.addEventListener("touchend", finish);
-  releaseTarget.addEventListener("dragend", finish);
-  releaseTarget.addEventListener("keyup", finish);
-  releaseTarget.addEventListener("blur", finishAfterSelectionSettles);
+  for (const release of releaseTargets) {
+    release.addEventListener("mouseup", finish);
+    release.addEventListener("pointerup", finish);
+    release.addEventListener("touchend", finish);
+    release.addEventListener("dragend", finish);
+    release.addEventListener("keyup", finish);
+    release.addEventListener("blur", finishAfterSelectionSettles);
+  }
 
   return () => {
     cancelPendingFinish();
     target.removeEventListener("mousedown", start);
     target.removeEventListener("selectionchange", finishAfterSelectionSettles);
-    releaseTarget.removeEventListener("mouseup", finish);
-    releaseTarget.removeEventListener("pointerup", finish);
-    releaseTarget.removeEventListener("touchend", finish);
-    releaseTarget.removeEventListener("dragend", finish);
-    releaseTarget.removeEventListener("keyup", finish);
-    releaseTarget.removeEventListener("blur", finishAfterSelectionSettles);
+    for (const release of releaseTargets) {
+      release.removeEventListener("mouseup", finish);
+      release.removeEventListener("pointerup", finish);
+      release.removeEventListener("touchend", finish);
+      release.removeEventListener("dragend", finish);
+      release.removeEventListener("keyup", finish);
+      release.removeEventListener("blur", finishAfterSelectionSettles);
+    }
   };
 }

@@ -2,15 +2,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { ArchiveRestore, BookCopy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import {
-  cancelLibraryRestore,
-  commitLibraryRestore,
-  createLibraryBackup,
-  prepareLibraryRestore,
-  type RestoreSummary,
-} from "../../lib/ipc";
-import { currentPreferences } from "../../lib/preferences";
-import { relaunchApp } from "../../lib/updater";
+import { libraryCopy, type RestoreSummary } from "../../lib/libraryCopy";
 import { useLibrary } from "../../store/library";
 import { ConfirmDialog } from "../ConfirmDialog";
 import styles from "./AboutPanel.module.css";
@@ -38,7 +30,7 @@ export function LibraryCopyRow() {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      void cancelLibraryRestore().catch(() => {
+      void libraryCopy.cancel().catch(() => {
         showBackgroundNotice(
           "Novus could not cancel the restore. Restart Novus and try again.",
           "error",
@@ -68,7 +60,7 @@ export function LibraryCopyRow() {
     setActivity("backingUp");
     setNotice({ tone: "quiet", text: "Saving your library copy…" });
     try {
-      await createLibraryBackup(destination, currentPreferences());
+      await libraryCopy.save(destination);
       if (!mounted.current) {
         showBackgroundNotice("Your library copy is saved.", "success", false);
         return;
@@ -113,9 +105,9 @@ export function LibraryCopyRow() {
     setActivity("preparing");
     setNotice({ tone: "quiet", text: "Checking this library copy…" });
     try {
-      const summary = await prepareLibraryRestore(source);
+      const summary = await libraryCopy.prepare(source);
       if (!mounted.current) {
-        await cancelLibraryRestore().catch(() => {
+        await libraryCopy.cancel().catch(() => {
           showBackgroundNotice(
             "Novus could not cancel the restore. Restart Novus and try again.",
             "error",
@@ -142,7 +134,7 @@ export function LibraryCopyRow() {
     setActivity("cancelling");
     setNotice({ tone: "quiet", text: "Cancelling the restore…" });
     try {
-      await cancelLibraryRestore();
+      await libraryCopy.cancel();
       setNotice(null);
     } catch {
       setNotice({
@@ -158,8 +150,9 @@ export function LibraryCopyRow() {
     setPrepared(null);
     setActivity("restarting");
     setNotice({ tone: "quiet", text: "Preparing to restart Novus…" });
+    let restarting: boolean;
     try {
-      await commitLibraryRestore();
+      restarting = await libraryCopy.install();
     } catch {
       setActivity("idle");
       setNotice({
@@ -168,10 +161,7 @@ export function LibraryCopyRow() {
       });
       return;
     }
-
-    try {
-      await relaunchApp();
-    } catch {
+    if (!restarting) {
       setActivity("idle");
       setNotice({
         tone: "error",

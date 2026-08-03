@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { TocItem } from "../reader/types";
-import type { PreferencesSnapshot } from "./preferences";
 import type {
   Book,
   Collection,
@@ -22,67 +21,6 @@ export interface ImportSummary {
   imported: Book[];
   skipped: number;
   failed: ImportFailure[];
-}
-
-export type LibraryPreferences = PreferencesSnapshot;
-
-export interface BackupSummary {
-  createdAt: number;
-  bookCount: number;
-  fileCount: number;
-  byteCount: number;
-}
-
-export interface RestoreSummary {
-  backupCreatedAt: number;
-  bookCount: number;
-  fileCount: number;
-}
-
-export interface RestoreStatus {
-  state:
-    | "prepared"
-    | "install"
-    | "installing"
-    | "installed"
-    | "rollingBack"
-    | "failed";
-  backupCreatedAt: number;
-  bookCount: number;
-  fileCount: number;
-  preferences: LibraryPreferences;
-  error: string | null;
-}
-
-export function createLibraryBackup(
-  path: string,
-  preferences: LibraryPreferences,
-): Promise<BackupSummary> {
-  return invoke<BackupSummary>("create_library_backup", { path, preferences });
-}
-
-export function prepareLibraryRestore(path: string): Promise<RestoreSummary> {
-  return invoke<RestoreSummary>("prepare_library_restore", { path });
-}
-
-export function commitLibraryRestore(): Promise<void> {
-  return invoke<void>("commit_library_restore");
-}
-
-export function cancelLibraryRestore(): Promise<void> {
-  return invoke<void>("cancel_library_restore");
-}
-
-export function libraryRestoreStatus(): Promise<RestoreStatus | null> {
-  return invoke<RestoreStatus | null>("library_restore_status");
-}
-
-export function finishLibraryRestore(): Promise<void> {
-  return invoke<void>("finish_library_restore");
-}
-
-export function rollbackLibraryRestore(): Promise<void> {
-  return invoke<void>("rollback_library_restore");
 }
 
 export function listBooks(): Promise<Book[]> {

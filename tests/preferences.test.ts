@@ -48,6 +48,7 @@ storage.setItem("novus.continueShelfOpen", "0");
 storage.setItem("novus.lastSeenVersion", "0.4.0");
 
 const preferences = await import("../src/lib/preferences");
+const { createLibraryCopy } = await import("../src/lib/libraryCopy");
 const migrated = preferences.currentPreferences();
 
 describe("durable preferences", () => {
@@ -96,4 +97,65 @@ describe("durable preferences", () => {
     expect(preferences.recoverPreviousPreferences()).toBe(true);
     expect(preferences.currentPreferences()).toEqual(previous);
   });
+
+  test("finishes an opened replacement and rolls back one that cannot open", async () => {
+    storage.clear();
+    const previous = preferences.replacePreferences({ profileName: "Original library" });
+    const restored = preferences.decodePreferences({ profileName: "Restored library" });
+    let status: ReturnType<typeof installedStatus> | null = installedStatus(101, restored);
+    let finished = 0;
+    let rolledBack = 0;
+    let relaunched = 0;
+    let reloaded = 0;
+    const backend = {
+      save: async () => ({ createdAt: 0, bookCount: 0, fileCount: 0, byteCount: 0 }),
+      prepare: async () => ({ backupCreatedAt: 0, bookCount: 0, fileCount: 0 }),
+      commit: async () => {},
+      cancel: async () => {},
+      status: async () => status,
+      finish: async () => {
+        finished += 1;
+        status = null;
+      },
+      rollback: async () => {
+        rolledBack += 1;
+      },
+      relaunch: async () => {
+        relaunched += 1;
+      },
+    };
+    const copy = createLibraryCopy(backend, () => {
+      reloaded += 1;
+    });
+
+    expect((await copy.resume(async () => true)).ready).toBe(false);
+    expect(reloaded).toBe(1);
+    expect(preferences.currentPreferences().profileName).toBe("Restored library");
+    expect((await copy.resume(async () => true)).ready).toBe(true);
+    expect(finished).toBe(1);
+
+    preferences.replacePreferences(previous);
+    status = installedStatus(202, restored);
+    await copy.resume(async () => true);
+    const result = await copy.resume(async () => false);
+
+    expect(result.ready).toBe(false);
+    expect(rolledBack).toBe(1);
+    expect(relaunched).toBe(1);
+    expect(preferences.currentPreferences()).toEqual(previous);
+  });
 });
+
+function installedStatus(
+  backupCreatedAt: number,
+  restored: ReturnType<typeof preferences.currentPreferences>,
+) {
+  return {
+    state: "installed" as const,
+    backupCreatedAt,
+    bookCount: 1,
+    fileCount: 2,
+    preferences: restored,
+    error: null,
+  };
+}

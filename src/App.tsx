@@ -9,22 +9,9 @@ import { UpdateBanner } from "./components/UpdateBanner";
 import { refreshCoverUrls } from "./lib/assets";
 import { compareVersions } from "./lib/changelog";
 import { blockNativeContextMenu } from "./lib/contextMenu";
-import {
-  cancelLibraryRestore,
-  finishLibraryRestore,
-  libraryRestoreStatus,
-  rollbackLibraryRestore,
-} from "./lib/ipc";
+import { libraryCopy } from "./lib/libraryCopy";
 import { isDesktop } from "./lib/platform";
-import {
-  applyRestoredPreferences,
-  clearPreferenceRecovery,
-  preferenceRecoverySaved,
-  recoverPreviousPreferences,
-  restoredPreferencesApplied,
-  usePreferences,
-} from "./lib/preferences";
-import { relaunchApp } from "./lib/updater";
+import { usePreferences } from "./lib/preferences";
 import { useZoomGuard } from "./lib/useZoomGuard";
 import { appVersion } from "./lib/version";
 import { useLibrary } from "./store/library";
@@ -64,9 +51,14 @@ export default function App() {
   useEffect(() => {
     if (startupStarted.current) return;
     startupStarted.current = true;
-    void loadLibraryAfterRestore(loadLibrary)
-      .then((ready) => {
-        setStartupState(ready ? "ready" : "blocked");
+    void libraryCopy
+      .resume(async () => {
+        await loadLibrary();
+        return !useLibrary.getState().error;
+      })
+      .then((result) => {
+        if (result.error) showRestoreError(result.error);
+        setStartupState(result.ready ? "ready" : "blocked");
       })
       .catch(() => {
         showRestoreError(
@@ -153,141 +145,10 @@ export default function App() {
   );
 }
 
-async function loadLibraryAfterRestore(loadLibrary: () => Promise<void>): Promise<boolean> {
-  let restore;
-  try {
-    restore = await libraryRestoreStatus();
-  } catch {
-    showRestoreError(
-      "Novus found an unfinished restore but could not check it. Restart Novus and try again.",
-    );
-    return false;
-  }
-
-  if (!restore) {
-    clearPreferenceRecovery();
-    await loadLibrary();
-    return true;
-  }
-
-  if (restore.state === "installed") {
-    if (!restoredPreferencesApplied(restore.backupCreatedAt)) {
-      try {
-        applyRestoredPreferences(restore.backupCreatedAt, restore.preferences);
-        window.location.reload();
-      } catch {
-        tryRecoverPreviousPreferences();
-        await beginRestoreRollback(
-          loadLibrary,
-          "Novus could not apply the saved preferences. Restart Novus to return to your previous library.",
-        );
-      }
-      return false;
-    }
-
-    await loadLibrary();
-    if (useLibrary.getState().error) {
-      const preferences = tryRecoverPreviousPreferences();
-      await beginRestoreRollback(
-        loadLibrary,
-        preferences === "failed"
-          ? "Restart Novus to return to your previous library. Novus will also try to restore its previous preferences."
-          : "Restart Novus to return to your previous library.",
-      );
-      return false;
-    }
-
-    try {
-      await finishLibraryRestore();
-      clearPreferenceRecovery();
-    } catch {
-      showRestoreError("Your library is restored, but Novus could not finish cleaning up.");
-      return false;
-    }
-    useLibrary.getState().clearAppNotice();
-    return true;
-  }
-
-  if (restore.state === "failed") {
-    const preferencesWereApplied = restoredPreferencesApplied(restore.backupCreatedAt);
-    const preferences = tryRecoverPreviousPreferences();
-    let cancelled = true;
-    try {
-      await cancelLibraryRestore();
-      if (preferences !== "failed") clearPreferenceRecovery();
-    } catch {
-      cancelled = false;
-    }
-    await loadLibrary();
-    showRestoreError(
-      preferencesWereApplied && preferences !== "restored"
-        ? "Novus kept your current library, but could not restore its previous preferences."
-        : cancelled
-          ? "Novus kept your current library because the restored copy could not be verified."
-          : "Novus kept your current library, but could not finish cleaning up the failed restore.",
-    );
-    return cancelled;
-  }
-
-  if (restore.state === "prepared") {
-    let cancelled = true;
-    try {
-      await cancelLibraryRestore();
-    } catch {
-      cancelled = false;
-    }
-    if (!cancelled) {
-      showRestoreError(
-        "Novus could not cancel an unfinished restore. Restart Novus and try again.",
-      );
-      return false;
-    }
-    clearPreferenceRecovery();
-    await loadLibrary();
-    return true;
-  }
-
-  showRestoreError("Restart Novus to finish restoring your library.");
-  return false;
-}
-
 function showRestoreError(error: string): void {
   useLibrary.getState().showAppNotice({
     text: error,
     tone: "error",
     persistent: true,
   });
-}
-
-async function beginRestoreRollback(
-  loadLibrary: () => Promise<void>,
-  relaunchMessage: string,
-): Promise<void> {
-  try {
-    await rollbackLibraryRestore();
-  } catch {
-    await loadLibrary();
-    showRestoreError(
-      "Novus could not return to your previous library. Restart Novus and try again.",
-    );
-    return;
-  }
-  try {
-    await relaunchApp();
-  } catch {
-    await loadLibrary();
-    showRestoreError(relaunchMessage);
-  }
-}
-
-type PreferenceRecovery = "missing" | "restored" | "failed";
-
-function tryRecoverPreviousPreferences(): PreferenceRecovery {
-  if (!preferenceRecoverySaved()) return "missing";
-  try {
-    recoverPreviousPreferences();
-    return "restored";
-  } catch {
-    return "failed";
-  }
 }

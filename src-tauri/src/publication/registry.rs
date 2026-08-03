@@ -90,10 +90,10 @@ impl PublicationRegistry {
         let Ok(mut state) = self.shared.write() else {
             return;
         };
-        if !state
+        if state
             .sessions
             .get(&session)
-            .is_some_and(|publication| publication.owner == owner)
+            .is_none_or(|publication| publication.owner != owner)
         {
             return;
         }

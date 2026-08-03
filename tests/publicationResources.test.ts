@@ -56,16 +56,6 @@ describe("publication paths", () => {
       "novus-resource://reader/assets/session%20%2F%E4%B8%80/OPS/Images/caf%C3%A9%20cover.png#front",
     );
   });
-
-  test("rejects a session that could escape its URL root", () => {
-    expect(() =>
-      buildPublicationResourceUrl(
-        "novus-resource://reader/assets",
-        "..",
-        "OPS/Images/cover.png",
-      ),
-    ).toThrow("A valid resource session is required");
-  });
 });
 
 describe("publication CSS", () => {

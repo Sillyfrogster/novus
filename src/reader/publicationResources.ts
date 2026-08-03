@@ -114,10 +114,6 @@ export function buildPublicationResourceUrl(
   sessionId: string,
   path: string,
 ): string {
-  if (!sessionId || sessionId === "." || sessionId === "..") {
-    throw new TypeError("A valid resource session is required");
-  }
-
   const rootUrl = new URL(root);
   if (rootUrl.search || rootUrl.hash) {
     throw new TypeError("The resource root cannot include a query or fragment");

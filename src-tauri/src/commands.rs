@@ -2,13 +2,15 @@ use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use tauri::{AppHandle, State};
+#[cfg(desktop)]
+use tauri::AppHandle;
+use tauri::State;
+#[cfg(desktop)]
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::backup::{
     cancel_restore, commit_restore, create_backup, finish_restore, prepare_restore,
-    request_restore_rollback, restore_status, BackupSummary, LibraryPreferences, RestoreStatus,
-    RestoreSummary,
+    request_restore_rollback, restore_status, BackupSummary, RestoreStatus, RestoreSummary,
 };
 use crate::db::{now_seconds, Book, Collection, Highlight, InsightsData, ReadingState};
 use crate::error::{AppError, AppResult};
@@ -42,7 +44,7 @@ pub fn storage_root(state: State<'_, Novus>) -> String {
 pub async fn create_library_backup(
     state: State<'_, Novus>,
     path: String,
-    preferences: LibraryPreferences,
+    preferences: serde_json::Value,
 ) -> AppResult<BackupSummary> {
     let storage = state.storage.clone();
     let db = state.db.clone();
@@ -299,6 +301,7 @@ pub fn delete_highlight(state: State<'_, Novus>, id: String) -> AppResult<()> {
 
 /// Write bytes to a user-chosen path.
 #[tauri::command]
+#[cfg(desktop)]
 pub async fn write_file(path: String, contents: Vec<u8>) -> AppResult<()> {
     run_blocking("Novus could not save the file", move || {
         std::fs::write(&path, &contents).map_err(Into::into)
@@ -307,6 +310,7 @@ pub async fn write_file(path: String, contents: Vec<u8>) -> AppResult<()> {
 }
 
 #[tauri::command]
+#[cfg(desktop)]
 pub async fn copy_highlight_image(
     app: AppHandle,
     request: tauri::ipc::Request<'_>,

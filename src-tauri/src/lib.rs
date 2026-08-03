@@ -29,10 +29,11 @@ pub fn run() {
     let resource_publications = publications.clone();
     let cleanup_publications = publications.clone();
 
-    let builder = tauri::Builder::default().plugin(tauri_plugin_clipboard_manager::init());
+    let builder = tauri::Builder::default();
 
     #[cfg(desktop)]
     let builder = builder
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
 
@@ -120,7 +121,9 @@ pub fn run() {
             commands::add_highlight,
             commands::set_highlight_note,
             commands::delete_highlight,
+            #[cfg(desktop)]
             commands::write_file,
+            #[cfg(desktop)]
             commands::copy_highlight_image,
         ])
         .run(tauri::generate_context!())

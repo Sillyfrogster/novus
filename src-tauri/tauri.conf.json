@@ -26,7 +26,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/books/**", "$APPDATA/covers/**"]
+        "scope": ["$APPDATA/covers/**"]
       }
     }
   },

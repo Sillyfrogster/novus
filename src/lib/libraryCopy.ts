@@ -26,7 +26,7 @@ export interface RestoreSummary {
 
 interface RestoreStatus extends RestoreSummary {
   state: "prepared" | "install" | "installing" | "installed" | "rollingBack" | "failed";
-  preferences: PreferencesSnapshot;
+  preferences: unknown;
   error: string | null;
 }
 

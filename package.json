@@ -17,7 +17,6 @@
     "@fontsource-variable/martian-mono": "^5.2.7",
     "@fontsource-variable/source-serif-4": "^5.2.9",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-process": "~2",
     "@tauri-apps/plugin-updater": "~2",

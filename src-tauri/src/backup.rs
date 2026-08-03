@@ -68,16 +68,6 @@ pub struct RestoreSummary {
     pub file_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LibraryPreferences {
-    pub app_theme: String,
-    pub profile_name: String,
-    pub reader_settings: serde_json::Value,
-    pub highlight_colors: serde_json::Value,
-    pub continue_shelf_open: bool,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreStatus {
@@ -85,7 +75,7 @@ pub struct RestoreStatus {
     pub backup_created_at: i64,
     pub book_count: usize,
     pub file_count: usize,
-    pub preferences: LibraryPreferences,
+    pub preferences: serde_json::Value,
     pub error: Option<String>,
 }
 
@@ -98,7 +88,6 @@ struct RestoreJournal {
     backup_created_at: i64,
     book_count: usize,
     file_count: usize,
-    preferences: LibraryPreferences,
     error: Option<String>,
 }
 
@@ -130,7 +119,7 @@ pub fn create_backup(
     storage: &Storage,
     db: &Db,
     destination: &Path,
-    preferences: &LibraryPreferences,
+    preferences: &serde_json::Value,
 ) -> AppResult<BackupSummary> {
     validate_backup_destination(storage, destination)?;
     validate_preferences(preferences)?;
@@ -267,7 +256,7 @@ pub fn prepare_restore(storage: &Storage, source: &Path) -> AppResult<RestoreSum
     let incoming = work.path().join(INCOMING_DIR);
     std::fs::create_dir_all(&incoming)?;
     let manifest = extract_and_validate(source, &incoming)?;
-    let preferences = read_preferences(&incoming.join(PREFERENCES_PATH))?;
+    read_preferences(&incoming.join(PREFERENCES_PATH))?;
     let journal = RestoreJournal {
         version: 1,
         state: "prepared".to_string(),
@@ -275,7 +264,6 @@ pub fn prepare_restore(storage: &Storage, source: &Path) -> AppResult<RestoreSum
         backup_created_at: manifest.created_at,
         book_count: manifest.book_count,
         file_count: manifest.files.len(),
-        preferences,
         error: None,
     };
     write_journal(work.path(), &journal)?;
@@ -326,7 +314,8 @@ pub fn restore_status(storage: &Storage) -> AppResult<Option<RestoreStatus>> {
         return Ok(None);
     }
     let journal = read_journal(&transaction)?;
-    Ok(Some(status_from_journal(journal)))
+    let preferences = read_preferences(&transaction.join(INCOMING_DIR).join(PREFERENCES_PATH))?;
+    Ok(Some(status_from_journal(journal, preferences)))
 }
 
 pub fn finish_restore(storage: &Storage) -> AppResult<()> {
@@ -1139,29 +1128,22 @@ fn validate_installed_files(storage: &Storage) -> AppResult<()> {
     Ok(())
 }
 
-fn read_preferences(path: &Path) -> AppResult<LibraryPreferences> {
+fn read_preferences(path: &Path) -> AppResult<serde_json::Value> {
     let bytes = std::fs::read(path)?;
     if bytes.len() > MAX_PREFERENCES_BYTES {
         return Err(invalid_backup("The saved preferences are too large"));
     }
-    let preferences: LibraryPreferences = serde_json::from_slice(&bytes)
+    let preferences: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|_| invalid_backup("The saved preferences are invalid"))?;
-    validate_preferences(&preferences).map_err(|error| invalid_backup(error.to_string()))?;
+    if !preferences.is_object() {
+        return Err(invalid_backup("The saved preferences are invalid"));
+    }
     Ok(preferences)
 }
 
-fn validate_preferences(preferences: &LibraryPreferences) -> AppResult<()> {
-    if preferences.app_theme != "light" && preferences.app_theme != "dark" {
-        return Err(backup_error("App theme must be light or dark"));
-    }
-    if preferences.profile_name.chars().count() > 200 {
-        return Err(backup_error("Profile name is too long"));
-    }
-    if !preferences.reader_settings.is_object() {
-        return Err(backup_error("Reader settings are invalid"));
-    }
-    if !preferences.highlight_colors.is_object() {
-        return Err(backup_error("Highlight colors are invalid"));
+fn validate_preferences(preferences: &serde_json::Value) -> AppResult<()> {
+    if !preferences.is_object() {
+        return Err(backup_error("Saved preferences must be a JSON object"));
     }
     let bytes = serde_json::to_vec(preferences)
         .map_err(|error| backup_error(format!("Could not save preferences: {error}")))?;
@@ -1171,13 +1153,13 @@ fn validate_preferences(preferences: &LibraryPreferences) -> AppResult<()> {
     Ok(())
 }
 
-fn status_from_journal(journal: RestoreJournal) -> RestoreStatus {
+fn status_from_journal(journal: RestoreJournal, preferences: serde_json::Value) -> RestoreStatus {
     RestoreStatus {
         state: journal.state,
         backup_created_at: journal.backup_created_at,
         book_count: journal.book_count,
         file_count: journal.file_count,
-        preferences: journal.preferences,
+        preferences,
         error: journal.error,
     }
 }
@@ -1248,8 +1230,6 @@ fn read_journal(transaction: &Path) -> AppResult<RestoreJournal> {
             "The restore journal is invalid".to_string(),
         ));
     }
-    validate_preferences(&journal.preferences)
-        .map_err(|_| AppError::Other("The restore journal is invalid".to_string()))?;
     Ok(journal)
 }
 
@@ -1356,14 +1336,14 @@ mod tests {
         .unwrap();
     }
 
-    fn preferences() -> LibraryPreferences {
-        LibraryPreferences {
-            app_theme: "dark".to_string(),
-            profile_name: "Guest library".to_string(),
-            reader_settings: serde_json::json!({"readTheme": "dark"}),
-            highlight_colors: serde_json::json!({}),
-            continue_shelf_open: true,
-        }
+    fn preferences() -> serde_json::Value {
+        serde_json::json!({
+            "appTheme": "dark",
+            "profileName": "Guest library",
+            "readerSettings": {"readTheme": "dark"},
+            "highlightColors": {},
+            "continueShelfOpen": true
+        })
     }
 
     #[test]
@@ -1393,10 +1373,10 @@ mod tests {
 
         let status = restore_status(&storage).unwrap().unwrap();
         assert_eq!(status.state, "installed");
-        assert_eq!(status.preferences.app_theme, "dark");
+        assert_eq!(status.preferences["appTheme"], "dark");
 
         let db = Db::open(&storage.db_path(), || storage.remove_legacy_voice_data()).unwrap();
-        assert_eq!(db.count_books().unwrap(), 1);
+        assert_eq!(db.list_books().unwrap().len(), 1);
         assert_eq!(db.list_collections().unwrap()[0].name, "Favorites");
         assert_eq!(
             db.list_highlights(&id).unwrap()[0].note.as_deref(),
@@ -1419,7 +1399,7 @@ mod tests {
 
         let error = prepare_restore(&storage, &backup_path).unwrap_err();
         assert!(error.to_string().contains("archive could not be read"));
-        assert_eq!(db.count_books().unwrap(), 1);
+        assert_eq!(db.list_books().unwrap().len(), 1);
     }
 
     #[test]
@@ -1435,7 +1415,7 @@ mod tests {
             .to_string()
             .contains("outside Novus's library storage"));
         assert_eq!(std::fs::read(database).unwrap(), before);
-        assert_eq!(db.count_books().unwrap(), 1);
+        assert_eq!(db.list_books().unwrap().len(), 1);
     }
 
     #[test]
@@ -1485,7 +1465,7 @@ mod tests {
         let status = restore_status(&storage).unwrap().unwrap();
         assert_eq!(status.state, "failed");
         let db = Db::open(&storage.db_path(), || storage.remove_legacy_voice_data()).unwrap();
-        assert_eq!(db.count_books().unwrap(), 0);
+        assert!(db.list_books().unwrap().is_empty());
     }
 
     #[test]
@@ -1516,7 +1496,7 @@ mod tests {
         let status = restore_status(&storage).unwrap().unwrap();
         assert_eq!(status.state, "failed");
         let db = Db::open(&storage.db_path(), || storage.remove_legacy_voice_data()).unwrap();
-        assert_eq!(db.count_books().unwrap(), 0);
+        assert!(db.list_books().unwrap().is_empty());
     }
 
     #[test]

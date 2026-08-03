@@ -299,12 +299,6 @@ impl Db {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    pub fn count_books(&self) -> AppResult<i64> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
-        let n = conn.query_row("SELECT COUNT(*) FROM books", [], |r| r.get(0))?;
-        Ok(n)
-    }
-
     pub fn book_exists(&self, id: &str) -> AppResult<bool> {
         let conn = self.conn.lock().expect("db mutex poisoned");
         let exists = conn
@@ -771,13 +765,13 @@ fn validate_connection(conn: &Connection) -> AppResult<i64> {
     }
 
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    if !(1..=SCHEMA_VERSION).contains(&version) {
+    if version != SCHEMA_VERSION {
         return Err(AppError::Other(format!(
             "This backup uses an unsupported library version ({version})"
         )));
     }
 
-    validate_schema_objects(conn, version)?;
+    validate_schema_objects(conn)?;
 
     let foreign_key_errors: i64 =
         conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
@@ -817,19 +811,7 @@ struct ExpectedForeignKey {
     on_delete: &'static str,
 }
 
-const BOOK_COLUMNS_V1: &[ExpectedColumn] = &[
-    column("id", "TEXT", false, None, 1),
-    column("title", "TEXT", true, None, 0),
-    column("author", "TEXT", true, None, 0),
-    column("format", "TEXT", true, None, 0),
-    column("rel_path", "TEXT", true, None, 0),
-    column("cover_path", "TEXT", false, None, 0),
-    column("page_count", "INTEGER", false, None, 0),
-    column("language", "TEXT", false, None, 0),
-    column("file_size", "INTEGER", true, None, 0),
-    column("added_at", "INTEGER", true, None, 0),
-];
-const BOOK_COLUMNS_V3: &[ExpectedColumn] = &[
+const BOOK_COLUMNS: &[ExpectedColumn] = &[
     column("id", "TEXT", false, None, 1),
     column("title", "TEXT", true, None, 0),
     column("author", "TEXT", true, None, 0),
@@ -857,15 +839,7 @@ const COLLECTION_BOOK_COLUMNS: &[ExpectedColumn] = &[
     column("collection_id", "INTEGER", true, None, 1),
     column("book_id", "TEXT", true, None, 2),
 ];
-const SESSION_COLUMNS_V2: &[ExpectedColumn] = &[
-    column("id", "INTEGER", false, None, 1),
-    column("book_id", "TEXT", true, None, 0),
-    column("started_at", "INTEGER", true, None, 0),
-    column("ended_at", "INTEGER", true, None, 0),
-    column("seconds", "INTEGER", true, None, 0),
-    column("pages", "INTEGER", true, Some("0"), 0),
-];
-const SESSION_COLUMNS_V5: &[ExpectedColumn] = &[
+const SESSION_COLUMNS: &[ExpectedColumn] = &[
     column("id", "INTEGER", false, None, 1),
     column("book_id", "TEXT", true, None, 0),
     column("started_at", "INTEGER", true, None, 0),
@@ -893,6 +867,49 @@ const HIGHLIGHT_COLUMNS: &[ExpectedColumn] = &[
     column("created_at", "INTEGER", true, None, 0),
 ];
 
+const EXPECTED_TABLES: &[(&str, &[ExpectedColumn])] = &[
+    ("books", BOOK_COLUMNS),
+    ("reading_state", READING_STATE_COLUMNS),
+    ("collections", COLLECTION_COLUMNS),
+    ("collection_books", COLLECTION_BOOK_COLUMNS),
+    ("reading_sessions", SESSION_COLUMNS),
+    ("highlights", HIGHLIGHT_COLUMNS),
+];
+
+const EXPECTED_AUTO_INDEXES: &[&str] = &[
+    "sqlite_autoindex_books_1",
+    "sqlite_autoindex_reading_state_1",
+    "sqlite_autoindex_collection_books_1",
+    "sqlite_autoindex_highlights_1",
+];
+
+const EXPECTED_INDEXES: &[ExpectedIndex] = &[
+    ExpectedIndex {
+        name: "idx_sessions_started",
+        table: "reading_sessions",
+        unique: false,
+        columns: &["started_at"],
+    },
+    ExpectedIndex {
+        name: "idx_highlights_book",
+        table: "highlights",
+        unique: false,
+        columns: &["book_id", "section_index", "location"],
+    },
+    ExpectedIndex {
+        name: "idx_sessions_uuid",
+        table: "reading_sessions",
+        unique: true,
+        columns: &["uuid"],
+    },
+    ExpectedIndex {
+        name: "idx_sessions_book",
+        table: "reading_sessions",
+        unique: false,
+        columns: &["book_id"],
+    },
+];
+
 const fn column(
     name: &'static str,
     declared_type: &'static str,
@@ -909,17 +926,16 @@ const fn column(
     }
 }
 
-fn validate_schema_objects(conn: &Connection, version: i64) -> AppResult<()> {
-    let tables = expected_tables(version);
-    let indexes = expected_indexes(version);
-    let expected_table_names = tables
+fn validate_schema_objects(conn: &Connection) -> AppResult<()> {
+    let expected_table_names = EXPECTED_TABLES
         .iter()
         .map(|(name, _)| *name)
-        .chain((version >= 2).then_some("sqlite_sequence"))
+        .chain(std::iter::once("sqlite_sequence"))
         .collect::<BTreeSet<_>>();
-    let expected_index_names = expected_auto_indexes(version)
-        .into_iter()
-        .chain(indexes.iter().map(|index| index.name))
+    let expected_index_names = EXPECTED_AUTO_INDEXES
+        .iter()
+        .copied()
+        .chain(EXPECTED_INDEXES.iter().map(|index| index.name))
         .collect::<BTreeSet<_>>();
     let mut table_names = BTreeSet::new();
     let mut index_names = BTreeSet::new();
@@ -964,97 +980,14 @@ fn validate_schema_objects(conn: &Connection, version: i64) -> AppResult<()> {
         return Err(invalid_schema());
     }
 
-    for (table, columns) in tables {
+    for &(table, columns) in EXPECTED_TABLES {
         validate_columns(conn, table, columns)?;
         validate_foreign_keys(conn, table, expected_foreign_keys(table))?;
     }
-    for index in indexes {
+    for &index in EXPECTED_INDEXES {
         validate_index(conn, index)?;
     }
     Ok(())
-}
-
-fn expected_tables(version: i64) -> Vec<(&'static str, &'static [ExpectedColumn])> {
-    let mut tables = vec![
-        (
-            "books",
-            if version >= 3 {
-                BOOK_COLUMNS_V3
-            } else {
-                BOOK_COLUMNS_V1
-            },
-        ),
-        ("reading_state", READING_STATE_COLUMNS),
-    ];
-    if version >= 2 {
-        tables.extend([
-            ("collections", COLLECTION_COLUMNS),
-            ("collection_books", COLLECTION_BOOK_COLUMNS),
-            (
-                "reading_sessions",
-                if version >= 5 {
-                    SESSION_COLUMNS_V5
-                } else {
-                    SESSION_COLUMNS_V2
-                },
-            ),
-        ]);
-    }
-    if version >= 4 {
-        tables.push(("highlights", HIGHLIGHT_COLUMNS));
-    }
-    tables
-}
-
-fn expected_auto_indexes(version: i64) -> Vec<&'static str> {
-    let mut indexes = vec![
-        "sqlite_autoindex_books_1",
-        "sqlite_autoindex_reading_state_1",
-    ];
-    if version >= 2 {
-        indexes.push("sqlite_autoindex_collection_books_1");
-    }
-    if version >= 4 {
-        indexes.push("sqlite_autoindex_highlights_1");
-    }
-    indexes
-}
-
-fn expected_indexes(version: i64) -> Vec<ExpectedIndex> {
-    let mut indexes = Vec::new();
-    if version >= 2 {
-        indexes.push(ExpectedIndex {
-            name: "idx_sessions_started",
-            table: "reading_sessions",
-            unique: false,
-            columns: &["started_at"],
-        });
-    }
-    if version >= 4 {
-        indexes.push(ExpectedIndex {
-            name: "idx_highlights_book",
-            table: "highlights",
-            unique: false,
-            columns: &["book_id", "section_index", "location"],
-        });
-    }
-    if version >= 5 {
-        indexes.extend([
-            ExpectedIndex {
-                name: "idx_sessions_uuid",
-                table: "reading_sessions",
-                unique: true,
-                columns: &["uuid"],
-            },
-            ExpectedIndex {
-                name: "idx_sessions_book",
-                table: "reading_sessions",
-                unique: false,
-                columns: &["book_id"],
-            },
-        ]);
-    }
-    indexes
 }
 
 fn expected_foreign_keys(table: &str) -> &'static [ExpectedForeignKey] {
@@ -1340,81 +1273,5 @@ mod tests {
             .unwrap();
         drop(connection);
         assert!(Db::validate_file(&missing_index).is_err());
-    }
-
-    #[test]
-    fn backup_validation_accepts_the_original_schema() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("novus.db");
-        let connection = Connection::open(&path).unwrap();
-        connection
-            .execute_batch(
-                "CREATE TABLE books (
-                    id          TEXT PRIMARY KEY,
-                    title       TEXT NOT NULL,
-                    author      TEXT NOT NULL,
-                    format      TEXT NOT NULL,
-                    rel_path    TEXT NOT NULL,
-                    cover_path  TEXT,
-                    page_count  INTEGER,
-                    language    TEXT,
-                    file_size   INTEGER NOT NULL,
-                    added_at    INTEGER NOT NULL
-                 );
-                 CREATE TABLE reading_state (
-                    book_id           TEXT PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
-                    locator           TEXT,
-                    progress          REAL NOT NULL DEFAULT 0,
-                    last_read_at      INTEGER
-                 );
-                 PRAGMA user_version = 1;",
-            )
-            .unwrap();
-        drop(connection);
-
-        assert_eq!(Db::validate_file(&path).unwrap(), 1);
-    }
-
-    #[test]
-    fn backup_validation_accepts_each_supported_schema() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("novus.db");
-        let db = Db::open(&path, || Ok(())).unwrap();
-        drop(db);
-        let connection = Connection::open(&path).unwrap();
-
-        connection.pragma_update(None, "user_version", 5).unwrap();
-        assert_eq!(Db::validate_file(&path).unwrap(), 5);
-
-        connection
-            .execute_batch(
-                "DROP INDEX idx_sessions_uuid;
-                 DROP INDEX idx_sessions_book;
-                 ALTER TABLE reading_sessions DROP COLUMN end_fraction;
-                 ALTER TABLE reading_sessions DROP COLUMN start_fraction;
-                 ALTER TABLE reading_sessions DROP COLUMN median_page_ms;
-                 ALTER TABLE reading_sessions DROP COLUMN pages_read;
-                 ALTER TABLE reading_sessions DROP COLUMN active_seconds;
-                 ALTER TABLE reading_sessions DROP COLUMN uuid;
-                 PRAGMA user_version = 4;",
-            )
-            .unwrap();
-        assert_eq!(Db::validate_file(&path).unwrap(), 4);
-
-        connection
-            .execute_batch(
-                "DROP TABLE highlights;
-                 PRAGMA user_version = 3;",
-            )
-            .unwrap();
-        assert_eq!(Db::validate_file(&path).unwrap(), 3);
-
-        connection
-            .execute_batch(
-                "ALTER TABLE books DROP COLUMN description;
-                 PRAGMA user_version = 2;",
-            )
-            .unwrap();
-        assert_eq!(Db::validate_file(&path).unwrap(), 2);
     }
 }

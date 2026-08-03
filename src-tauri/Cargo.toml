@@ -25,7 +25,6 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 roxmltree = "0.20"
 tempfile = "3"
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
-tauri-plugin-process = "2"
 sha1 = "0.11"
 uuid = { version = "1", features = ["v4"] }
 
@@ -39,4 +38,5 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-process = "2"
 tauri-plugin-updater = "2"

@@ -1,6 +1,8 @@
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 
+import { isDesktop } from "./platform";
+
 /**
  * Thin isolation layer over the Tauri updater/process plugins.
  */
@@ -9,6 +11,7 @@ export type { Update };
 
 /** Resolves to an `Update` when one is available, or `null` when up to date. */
 export function checkForUpdate(): Promise<Update | null> {
+  if (!isDesktop) return Promise.resolve(null);
   return check();
 }
 
@@ -19,6 +22,7 @@ export async function downloadAndInstall(
   update: Update,
   onProgress?: (fraction: number) => void,
 ): Promise<void> {
+  if (!isDesktop) throw new Error("Updates are managed by the mobile app store.");
   let contentLength = 0;
   let downloaded = 0;
 
@@ -41,5 +45,6 @@ export async function downloadAndInstall(
 
 /** Relaunch the app so the installed update takes effect. */
 export function relaunchApp(): Promise<void> {
+  if (!isDesktop) return Promise.reject(new Error("Relaunch is not available on mobile."));
   return relaunch();
 }

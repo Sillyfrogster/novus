@@ -1,12 +1,15 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Info, Minus, Moon, Square, Sun, X } from "lucide-react";
 
+import { isDesktop } from "../lib/platform";
 import { useLibrary } from "../store/library";
 import { Mark } from "./Mark";
 import styles from "./TitleBar.module.css";
 
-const appWindow = getCurrentWindow();
-type ResizeDirection = Parameters<typeof appWindow.startResizeDragging>[0];
+type AppWindow = ReturnType<typeof getCurrentWindow>;
+type ResizeDirection = Parameters<AppWindow["startResizeDragging"]>[0];
+
+const appWindow = isDesktop ? getCurrentWindow() : null;
 
 interface TitleBarProps {
   operationsEnabled?: boolean;
@@ -25,7 +28,7 @@ function ResizeHandle({ className, direction }: ResizeHandleProps) {
       onMouseDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
-        void appWindow.startResizeDragging(direction);
+        void appWindow?.startResizeDragging(direction);
       }}
     />
   );
@@ -41,14 +44,18 @@ export function TitleBar({ operationsEnabled = true }: TitleBarProps) {
 
   return (
     <>
-      <ResizeHandle className={styles.north} direction="North" />
-      <ResizeHandle className={styles.east} direction="East" />
-      <ResizeHandle className={styles.south} direction="South" />
-      <ResizeHandle className={styles.west} direction="West" />
-      <ResizeHandle className={styles.northEast} direction="NorthEast" />
-      <ResizeHandle className={styles.northWest} direction="NorthWest" />
-      <ResizeHandle className={styles.southEast} direction="SouthEast" />
-      <ResizeHandle className={styles.southWest} direction="SouthWest" />
+      {isDesktop && (
+        <>
+          <ResizeHandle className={styles.north} direction="North" />
+          <ResizeHandle className={styles.east} direction="East" />
+          <ResizeHandle className={styles.south} direction="South" />
+          <ResizeHandle className={styles.west} direction="West" />
+          <ResizeHandle className={styles.northEast} direction="NorthEast" />
+          <ResizeHandle className={styles.northWest} direction="NorthWest" />
+          <ResizeHandle className={styles.southEast} direction="SouthEast" />
+          <ResizeHandle className={styles.southWest} direction="SouthWest" />
+        </>
+      )}
 
       <div className={styles.bar}>
         <div className={styles.brand}>
@@ -56,8 +63,8 @@ export function TitleBar({ operationsEnabled = true }: TitleBarProps) {
           <span className={styles.wordmark}>NOVUS</span>
         </div>
 
-        <div className={styles.drag} data-tauri-drag-region>
-          <span className={styles.center} data-tauri-drag-region>
+        <div className={styles.drag} data-tauri-drag-region={isDesktop || undefined}>
+          <span className={styles.center} data-tauri-drag-region={isDesktop || undefined}>
             {view === "reader" ? "Reading" : "Library"}
           </span>
         </div>
@@ -81,31 +88,35 @@ export function TitleBar({ operationsEnabled = true }: TitleBarProps) {
           >
             {isDark ? <Moon size={16} strokeWidth={1.7} /> : <Sun size={16} strokeWidth={1.7} />}
           </button>
-          <div className={styles.divider} />
-          <button
-            type="button"
-            className={styles.btn}
-            title="Minimize"
-            onClick={() => appWindow.minimize()}
-          >
-            <Minus size={13} strokeWidth={1.3} />
-          </button>
-          <button
-            type="button"
-            className={styles.btn}
-            title="Maximize"
-            onClick={() => appWindow.toggleMaximize()}
-          >
-            <Square size={12} strokeWidth={1.3} />
-          </button>
-          <button
-            type="button"
-            className={`${styles.btn} ${styles.close}`}
-            title="Close"
-            onClick={() => appWindow.close()}
-          >
-            <X size={12} strokeWidth={1.3} />
-          </button>
+          {isDesktop && appWindow && (
+            <>
+              <div className={styles.divider} />
+              <button
+                type="button"
+                className={styles.btn}
+                title="Minimize"
+                onClick={() => appWindow.minimize()}
+              >
+                <Minus size={13} strokeWidth={1.3} />
+              </button>
+              <button
+                type="button"
+                className={styles.btn}
+                title="Maximize"
+                onClick={() => appWindow.toggleMaximize()}
+              >
+                <Square size={12} strokeWidth={1.3} />
+              </button>
+              <button
+                type="button"
+                className={`${styles.btn} ${styles.close}`}
+                title="Close"
+                onClick={() => appWindow.close()}
+              >
+                <X size={12} strokeWidth={1.3} />
+              </button>
+            </>
+          )}
         </div>
       </div>
     </>

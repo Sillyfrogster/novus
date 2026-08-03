@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 
 import { writeFile } from "./ipc";
+import { isDesktop } from "./platform";
 import type { Book, Highlight } from "./types";
 
 function locationLabel(h: Highlight): string | null {
@@ -63,6 +64,7 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 export async function copyImage(imageData: ImageData): Promise<boolean> {
+  if (!isDesktop) return false;
   try {
     const rgba = new Uint8Array(
       imageData.data.buffer,
@@ -88,6 +90,7 @@ export async function saveTextFile(
   filterName: string,
   ext: string,
 ): Promise<boolean> {
+  if (!isDesktop) return false;
   const path = await save({ defaultPath: defaultName, filters: [{ name: filterName, extensions: [ext] }] });
   if (!path) return false;
   await writeFile(path, new TextEncoder().encode(content));
@@ -95,6 +98,7 @@ export async function saveTextFile(
 }
 
 export async function saveImageFile(blob: Blob, defaultName: string): Promise<boolean> {
+  if (!isDesktop) return false;
   const path = await save({ defaultPath: defaultName, filters: [{ name: "PNG image", extensions: ["png"] }] });
   if (!path) return false;
   await writeFile(path, new Uint8Array(await blob.arrayBuffer()));

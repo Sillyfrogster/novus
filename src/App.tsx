@@ -25,6 +25,7 @@ import {
   restorePreviousLibraryPreferences,
   restoredLibraryApplied,
 } from "./lib/libraryBackup";
+import { isDesktop } from "./lib/platform";
 import { relaunchApp } from "./lib/updater";
 import { useZoomGuard } from "./lib/useZoomGuard";
 import { appVersion } from "./lib/version";
@@ -78,7 +79,7 @@ export default function App() {
   }, [loadLibrary]);
 
   useEffect(() => {
-    if (startupState !== "ready") return;
+    if (!isDesktop || startupState !== "ready") return;
     useUpdate.getState().check(true);
 
     let cancelled = false;
@@ -100,6 +101,7 @@ export default function App() {
   }, [startupState]);
 
   useEffect(() => {
+    if (!isDesktop) return;
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
       const { payload } = event;
       if (startupState !== "ready") {
@@ -146,7 +148,7 @@ export default function App() {
           </>
         )}
       </div>
-      {startupState === "ready" && <UpdateBanner />}
+      {isDesktop && startupState === "ready" && <UpdateBanner />}
       {startupState === "ready" && aboutOpen && <AboutPanel />}
       <Toast />
     </div>

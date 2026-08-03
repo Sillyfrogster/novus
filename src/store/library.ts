@@ -14,6 +14,7 @@ import {
   storageRoot,
 } from "../lib/ipc";
 import { messageOf } from "../lib/errors";
+import { isDesktop } from "../lib/platform";
 import type { AppTheme, Book, Collection, InsightsData, View } from "../lib/types";
 
 const THEME_KEY = "novus.appTheme";
@@ -156,6 +157,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   },
 
   pickAndImport: async () => {
+    if (!isDesktop) return;
     const selection = await open({
       multiple: true,
       filters: [{ name: "Books", extensions: ["epub"] }],
@@ -166,7 +168,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   },
 
   importPaths: async (paths) => {
-    if (paths.length === 0) return;
+    if (!isDesktop || paths.length === 0) return;
     set({ importing: true, error: null });
     try {
       const summary = await importBooks(paths);

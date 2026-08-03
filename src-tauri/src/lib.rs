@@ -29,10 +29,14 @@ pub fn run() {
     let resource_publications = publications.clone();
     let cleanup_publications = publications.clone();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_clipboard_manager::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_clipboard_manager::init());
+
+    #[cfg(desktop)]
+    let builder = builder
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .manage(ZoomGuard(zoom_locked.clone()))
         .manage(publications)

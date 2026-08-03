@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Copy, FileDown, Image, ImageDown, Info, Trash2 } from "lucide-react";
 
 import { useDialog } from "../../lib/useDialog";
+import { isDesktop } from "../../lib/platform";
 import styles from "./HighlightContextMenu.module.css";
 
 interface HighlightContextMenuProps {
@@ -127,43 +128,47 @@ export function HighlightContextMenu({
         <Copy size={15} strokeWidth={1.7} />
         Copy text
       </button>
-      <button
-        type="button"
-        className={styles.item}
-        onClick={run(onCopyImage)}
-        role="menuitem"
-      >
-        <Image size={15} strokeWidth={1.7} />
-        Copy as image
-      </button>
-      <button
-        type="button"
-        className={styles.item}
-        onClick={run(onSaveImage)}
-        role="menuitem"
-      >
-        <ImageDown size={15} strokeWidth={1.7} />
-        Save image…
-      </button>
-      <div className={styles.divider} role="separator" />
-      <button
-        type="button"
-        className={styles.item}
-        onClick={run(onExportMarkdown)}
-        role="menuitem"
-      >
-        <FileDown size={15} strokeWidth={1.7} />
-        Export Markdown…
-      </button>
-      <button
-        type="button"
-        className={styles.item}
-        onClick={run(onExportObsidian)}
-        role="menuitem"
-      >
-        <FileDown size={15} strokeWidth={1.7} />
-        Export for Obsidian…
-      </button>
+      {isDesktop && (
+        <>
+          <button
+            type="button"
+            className={styles.item}
+            onClick={run(onCopyImage)}
+            role="menuitem"
+          >
+            <Image size={15} strokeWidth={1.7} />
+            Copy as image
+          </button>
+          <button
+            type="button"
+            className={styles.item}
+            onClick={run(onSaveImage)}
+            role="menuitem"
+          >
+            <ImageDown size={15} strokeWidth={1.7} />
+            Save image…
+          </button>
+          <div className={styles.divider} role="separator" />
+          <button
+            type="button"
+            className={styles.item}
+            onClick={run(onExportMarkdown)}
+            role="menuitem"
+          >
+            <FileDown size={15} strokeWidth={1.7} />
+            Export Markdown…
+          </button>
+          <button
+            type="button"
+            className={styles.item}
+            onClick={run(onExportObsidian)}
+            role="menuitem"
+          >
+            <FileDown size={15} strokeWidth={1.7} />
+            Export for Obsidian…
+          </button>
+        </>
+      )}
       <div className={styles.divider} role="separator" />
       <button
         type="button"

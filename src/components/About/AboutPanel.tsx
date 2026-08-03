@@ -1,6 +1,7 @@
 import { Check, Download, RotateCw, X } from "lucide-react";
 
 import { CHANGELOG, compareVersions, type ChangeKind } from "../../lib/changelog";
+import { isDesktop } from "../../lib/platform";
 import { useDialog } from "../../lib/useDialog";
 import { useAppVersion } from "../../lib/version";
 import { useLibrary } from "../../store/library";
@@ -55,13 +56,14 @@ export function AboutPanel() {
         choose to give.
       </p>
 
-      <UpdateRow />
-
-      <div className={styles.divider} />
-
-      <LibraryCopyRow />
-
-      <div className={styles.divider} />
+      {isDesktop && (
+        <>
+          <UpdateRow />
+          <div className={styles.divider} />
+          <LibraryCopyRow />
+          <div className={styles.divider} />
+        </>
+      )}
 
       <h2 className={styles.sectionTitle}>Release history</h2>
       <ol className={styles.releases}>

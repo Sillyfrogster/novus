@@ -12,6 +12,7 @@ import {
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { CuratorRail } from "../../components/CuratorRail";
+import { isDesktop } from "../../lib/platform";
 import type { Book } from "../../lib/types";
 import { useLibrary } from "../../store/library";
 import { DetailModal } from "./DetailModal";
@@ -182,15 +183,17 @@ function LibraryMasthead({
           </button>
         )}
 
-        <button
-          type="button"
-          className={styles.addBtn}
-          onClick={onAddBooks}
-          disabled={importing}
-        >
-          <Plus size={14} strokeWidth={1.8} />
-          {importing ? "Importing…" : "Add books"}
-        </button>
+        {isDesktop && (
+          <button
+            type="button"
+            className={styles.addBtn}
+            onClick={onAddBooks}
+            disabled={importing}
+          >
+            <Plus size={14} strokeWidth={1.8} />
+            {importing ? "Importing…" : "Add books"}
+          </button>
+        )}
       </div>
     </div>
   );

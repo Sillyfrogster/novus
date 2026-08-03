@@ -20,7 +20,7 @@ interface HighlightContextMenuProps {
 const MENU_W = 226;
 const VIEWPORT_GAP = 12;
 
-export function clampMenuPosition(
+function clampMenuPosition(
   x: number,
   y: number,
   menuWidth: number,

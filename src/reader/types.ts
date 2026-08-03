@@ -41,7 +41,6 @@ export interface BookSection {
   cfi?: string;
   load(): Promise<SectionSource> | SectionSource;
   unload?(): void;
-  createDocument?(): Promise<Document>;
   resolveHref?(href: string): string;
 }
 
@@ -54,14 +53,6 @@ export interface ResolvedTarget {
 export interface BookModel {
   sections: BookSection[];
   toc?: TocItem[];
-  pageList?: TocItem[];
-  metadata?: {
-    language?: string | string[];
-    title?: unknown;
-    author?: unknown;
-    description?: unknown;
-  };
-  dir?: string;
   resolveCFI?(cfi: string): ResolvedTarget & { anchor: (doc: Document) => Range | Node };
   resolveHref(href: string): ResolvedTarget | Promise<ResolvedTarget>;
   splitTOCHref(
@@ -69,6 +60,5 @@ export interface BookModel {
   ): Promise<[string, string | null]> | [string, string | null];
   getTOCFragment(doc: Document, id: string | null): Node | null;
   isExternal?(uri: string): boolean;
-  getCover?(): Promise<Blob | null>;
   destroy?(): void;
 }

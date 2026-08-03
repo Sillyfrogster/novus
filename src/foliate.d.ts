@@ -38,30 +38,3 @@ declare module "*/foliate-js/epubcfi.js" {
     toIndex(part: unknown): number;
   };
 }
-
-declare module "*/foliate-js/epub.js" {
-  export class EPUB {
-    constructor(loader: unknown);
-    init(): Promise<unknown>;
-  }
-}
-
-declare module "*/foliate-js/vendor/zip.js" {
-  export interface ZipEntry {
-    filename: string;
-    uncompressedSize: number;
-    getData(writer: unknown): Promise<unknown>;
-  }
-  export function configure(opts: { useWebWorkers?: boolean }): void;
-  export class ZipReader {
-    constructor(reader: unknown);
-    getEntries(): Promise<ZipEntry[]>;
-  }
-  export class BlobReader {
-    constructor(blob: Blob);
-  }
-  export class TextWriter {}
-  export class BlobWriter {
-    constructor(type?: string);
-  }
-}

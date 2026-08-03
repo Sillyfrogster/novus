@@ -89,7 +89,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_books,
-            commands::library_count,
             commands::storage_root,
             commands::create_library_backup,
             commands::prepare_library_restore,

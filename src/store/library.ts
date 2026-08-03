@@ -13,6 +13,7 @@ import {
   setCollectionMembership,
   storageRoot,
 } from "../lib/ipc";
+import { messageOf } from "../lib/errors";
 import type { AppTheme, Book, Collection, InsightsData, View } from "../lib/types";
 
 const THEME_KEY = "novus.appTheme";
@@ -260,7 +261,3 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     set({ profileName: trimmed });
   },
 }));
-
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}

@@ -30,12 +30,6 @@ pub fn list_books(state: State<'_, Novus>) -> AppResult<Vec<Book>> {
     state.db.list_books()
 }
 
-/// Number of volumes in the library (used by the rail/profile).
-#[tauri::command]
-pub fn library_count(state: State<'_, Novus>) -> AppResult<i64> {
-    state.db.count_books()
-}
-
 /// Absolute path of the managed storage root
 #[tauri::command]
 pub fn storage_root(state: State<'_, Novus>) -> String {

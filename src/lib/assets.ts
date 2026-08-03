@@ -18,13 +18,3 @@ export function coverUrl(book: Book, storageRoot: string): string | null {
     return null;
   }
 }
-
-/** Webview-loadable URL for a book's managed file (used by the reader). */
-export function bookUrl(book: Book, storageRoot: string): string | null {
-  if (!storageRoot) return null;
-  try {
-    return convertFileSrc(`${storageRoot}/${book.relPath}`);
-  } catch {
-    return null;
-  }
-}

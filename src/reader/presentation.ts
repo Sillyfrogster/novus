@@ -1,4 +1,4 @@
-import { HIGHLIGHT_COLOR_KEYS, tintFor } from "../lib/highlightColors";
+import { HIGHLIGHT_COLOR_KEYS } from "../lib/preferences";
 import type { ReadFont } from "../lib/types";
 import type { ReaderPresentation } from "./contract";
 
@@ -16,6 +16,10 @@ const THEMES: Record<
   sepia: { background: "#ece1cf", foreground: "#433a2b" },
   dark: { background: "#0c0d10", foreground: "#c9ccd4" },
 };
+
+function tintFor(color: string): string {
+  return `color-mix(in srgb, ${color} 34%, transparent)`;
+}
 
 function highlightCss(presentation: ReaderPresentation): string {
   const slots = HIGHLIGHT_COLOR_KEYS.map(

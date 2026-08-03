@@ -9,7 +9,7 @@ import {
   prepareLibraryRestore,
   type RestoreSummary,
 } from "../../lib/ipc";
-import { currentLibraryPreferences } from "../../lib/libraryBackup";
+import { currentPreferences } from "../../lib/preferences";
 import { relaunchApp } from "../../lib/updater";
 import { useLibrary } from "../../store/library";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -68,7 +68,7 @@ export function LibraryCopyRow() {
     setActivity("backingUp");
     setNotice({ tone: "quiet", text: "Saving your library copy…" });
     try {
-      await createLibraryBackup(destination, currentLibraryPreferences());
+      await createLibraryBackup(destination, currentPreferences());
       if (!mounted.current) {
         showBackgroundNotice("Your library copy is saved.", "success", false);
         return;

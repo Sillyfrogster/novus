@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { BarChart3, Plus, Search, X } from "lucide-react";
 
 import { coverUrl } from "../lib/assets";
+import { setProfileName, usePreferences } from "../lib/preferences";
 import type { Book, Collection } from "../lib/types";
 import { useLibrary } from "../store/library";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -27,12 +28,11 @@ function recentBook(books: Book[]): Book | null {
 export function CuratorRail({ books, storageRoot, onRead, onSearch }: CuratorRailProps) {
   const collections = useLibrary((s) => s.collections);
   const selectedCollectionId = useLibrary((s) => s.selectedCollectionId);
-  const profileName = useLibrary((s) => s.profileName);
+  const profileName = usePreferences((s) => s.profileName);
   const selectCollection = useLibrary((s) => s.selectCollection);
   const openInsights = useLibrary((s) => s.openInsights);
   const addCollection = useLibrary((s) => s.addCollection);
   const removeCollection = useLibrary((s) => s.removeCollection);
-  const setProfileName = useLibrary((s) => s.setProfileName);
 
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("");

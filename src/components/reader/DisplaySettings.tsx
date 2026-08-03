@@ -1,12 +1,12 @@
 import { X } from "lucide-react";
 
 import {
-  FONT_LABELS,
   MEASURE_MAX,
   MEASURE_MIN,
   MEASURE_STEP,
-  useReaderSettings,
-} from "../../store/reader";
+  setReaderSetting,
+  usePreferences,
+} from "../../lib/preferences";
 import type { ReadFont, ReadLayout, ReadTheme, TextAlign } from "../../lib/types";
 import styles from "./DisplaySettings.module.css";
 
@@ -21,6 +21,11 @@ const THEMES: { key: ReadTheme; label: string; bg: string; fg: string }[] = [
 ];
 
 const FONTS: ReadFont[] = ["serif", "sans", "modern"];
+const FONT_LABELS: Record<ReadFont, string> = {
+  serif: "Serif",
+  sans: "Sans",
+  modern: "Modern",
+};
 const ALIGNS: { key: TextAlign; label: string }[] = [
   { key: "left", label: "Left" },
   { key: "justify", label: "Justified" },
@@ -31,7 +36,7 @@ const LAYOUTS: { key: ReadLayout; label: string }[] = [
 ];
 
 export function DisplaySettings({ onClose }: DisplaySettingsProps) {
-  const s = useReaderSettings();
+  const s = usePreferences((state) => state.readerSettings);
 
   return (
     <>
@@ -64,7 +69,7 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
                   key={t.key}
                   type="button"
                   className={`${styles.theme} ${s.readTheme === t.key ? styles.active : ""}`}
-                  onClick={() => s.set("readTheme", t.key)}
+                  onClick={() => setReaderSetting("readTheme", t.key)}
                 >
                   <span className={styles.swatch} style={{ background: t.bg, color: t.fg }}>
                     A
@@ -83,7 +88,7 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
                   key={f}
                   type="button"
                   className={`${styles.segBtn} ${s.font === f ? styles.active : ""}`}
-                  onClick={() => s.set("font", f)}
+                  onClick={() => setReaderSetting("font", f)}
                 >
                   {FONT_LABELS[f]}
                 </button>
@@ -111,7 +116,7 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
                 max={26}
                 step={1}
                 value={s.fontSize}
-                onChange={(e) => s.set("fontSize", Number(e.target.value))}
+                onChange={(e) => setReaderSetting("fontSize", Number(e.target.value))}
                 className={styles.slider}
               />
               <span className={styles.glyphLg}>A</span>
@@ -136,7 +141,7 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
               max={2.2}
               step={0.05}
               value={s.lineHeight}
-              onChange={(e) => s.set("lineHeight", Number(e.target.value))}
+              onChange={(e) => setReaderSetting("lineHeight", Number(e.target.value))}
               className={styles.slider}
             />
           </section>
@@ -159,7 +164,7 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
               max={1.4}
               step={0.05}
               value={s.paragraphSpacing}
-              onChange={(e) => s.set("paragraphSpacing", Number(e.target.value))}
+              onChange={(e) => setReaderSetting("paragraphSpacing", Number(e.target.value))}
               className={styles.slider}
             />
           </section>
@@ -172,7 +177,7 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
                   key={a.key}
                   type="button"
                   className={`${styles.segBtn} ${s.align === a.key ? styles.active : ""}`}
-                  onClick={() => s.set("align", a.key)}
+                  onClick={() => setReaderSetting("align", a.key)}
                 >
                   {a.label}
                 </button>
@@ -188,7 +193,7 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
                   key={l.key}
                   type="button"
                   className={`${styles.segBtn} ${s.layout === l.key ? styles.active : ""}`}
-                  onClick={() => s.set("layout", l.key)}
+                  onClick={() => setReaderSetting("layout", l.key)}
                 >
                   {l.label}
                 </button>
@@ -216,7 +221,7 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
                 max={MEASURE_MAX}
                 step={MEASURE_STEP}
                 value={s.measure}
-                onChange={(e) => s.set("measure", Number(e.target.value))}
+                onChange={(e) => setReaderSetting("measure", Number(e.target.value))}
                 className={styles.slider}
               />
               <span className={styles.glyphLg}>▮▮</span>
@@ -241,7 +246,7 @@ export function DisplaySettings({ onClose }: DisplaySettingsProps) {
               max={1}
               step={0.05}
               value={s.brightness}
-              onChange={(e) => s.set("brightness", Number(e.target.value))}
+              onChange={(e) => setReaderSetting("brightness", Number(e.target.value))}
               className={styles.slider}
             />
           </section>

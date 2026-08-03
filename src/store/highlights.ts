@@ -8,15 +8,7 @@ import {
   setHighlightNote,
   type NewHighlight,
 } from "../lib/ipc";
-import {
-  resolveColors,
-  saveColorOverride,
-  resetColor,
-  type HighlightColor,
-} from "../lib/highlightColors";
 import type { Highlight, HighlightColorKey } from "../lib/types";
-
-type ColorMap = Record<HighlightColorKey, HighlightColor>;
 
 export interface CaptureInput {
   id?: string;
@@ -41,7 +33,6 @@ function bookOrder(a: Highlight, b: Highlight): number {
 interface HighlightStore {
   bookId: string | null;
   highlights: Highlight[];
-  colors: ColorMap;
   loading: boolean;
 
   loadFor: (bookId: string) => Promise<void>;
@@ -50,16 +41,11 @@ interface HighlightStore {
   setColor: (id: string, color: HighlightColorKey) => Promise<void>;
   remove: (id: string) => Promise<Highlight | null>;
   restore: (h: Highlight) => Promise<void>;
-
-  renameColor: (key: HighlightColorKey, label: string) => void;
-  recolor: (key: HighlightColorKey, color: string) => void;
-  resetColorSlot: (key: HighlightColorKey) => void;
 }
 
 export const useHighlights = create<HighlightStore>((set, get) => ({
   bookId: null,
   highlights: [],
-  colors: resolveColors(),
   loading: false,
 
   loadFor: async (bookId) => {
@@ -132,8 +118,4 @@ export const useHighlights = create<HighlightStore>((set, get) => ({
       set((s) => ({ highlights: s.highlights.filter((x) => x.id !== h.id) }));
     }
   },
-
-  renameColor: (key, label) => set({ colors: saveColorOverride(key, { label }) }),
-  recolor: (key, color) => set({ colors: saveColorOverride(key, { color }) }),
-  resetColorSlot: (key) => set({ colors: resetColor(key) }),
 }));

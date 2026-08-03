@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MoreHorizontal, X } from "lucide-react";
 
 import { coverUrl } from "../../lib/assets";
+import { usePreferences } from "../../lib/preferences";
 import { useDialog } from "../../lib/useDialog";
 import {
   copyImage,
@@ -84,7 +85,7 @@ export function DetailModal({
   const modalRef = useDialog();
 
   const highlights = useHighlights((s) => s.highlights);
-  const colors = useHighlights((s) => s.colors);
+  const colors = usePreferences((s) => s.highlightColors);
   const highlightsLoading = useHighlights((s) => s.loading);
   const [tab, setTab] = useState<DetailTab>("overview");
   const [menu, setMenu] = useState<{ x: number; y: number; h: Highlight } | null>(null);

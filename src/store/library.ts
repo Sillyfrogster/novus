@@ -15,10 +15,7 @@ import {
 } from "../lib/ipc";
 import { messageOf } from "../lib/errors";
 import { isDesktop } from "../lib/platform";
-import type { AppTheme, Book, Collection, InsightsData, View } from "../lib/types";
-
-const THEME_KEY = "novus.appTheme";
-const PROFILE_KEY = "novus.profileName";
+import type { Book, Collection, InsightsData, View } from "../lib/types";
 
 export interface AppNotice {
   text: string;
@@ -26,17 +23,7 @@ export interface AppNotice {
   persistent: boolean;
 }
 
-function initialTheme(): AppTheme {
-  const stored = localStorage.getItem(THEME_KEY);
-  return stored === "light" ? "light" : "dark";
-}
-
-function initialProfileName(): string {
-  return localStorage.getItem(PROFILE_KEY) || "Guest library";
-}
-
 interface LibraryState {
-  appTheme: AppTheme;
   view: View;
   aboutOpen: boolean;
   aboutHighlightSince: string | null;
@@ -47,14 +34,12 @@ interface LibraryState {
   selectedCollectionId: number | null;
   insights: InsightsData | null;
   insightsLoading: boolean;
-  profileName: string;
   storageRoot: string;
   loading: boolean;
   importing: boolean;
   error: string | null;
   appNotice: AppNotice | null;
 
-  toggleTheme: () => void;
   openAbout: (highlightSince?: string | null) => void;
   closeAbout: () => void;
   openReader: (id: string, locator?: string | null) => void;
@@ -74,11 +59,9 @@ interface LibraryState {
   addCollection: (name: string) => Promise<void>;
   removeCollection: (id: number) => Promise<void>;
   toggleMembership: (collectionId: number, bookId: string, member: boolean) => Promise<void>;
-  setProfileName: (name: string) => void;
 }
 
 export const useLibrary = create<LibraryState>((set, get) => ({
-  appTheme: initialTheme(),
   view: "library",
   aboutOpen: false,
   aboutHighlightSince: null,
@@ -89,19 +72,11 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   selectedCollectionId: null,
   insights: null,
   insightsLoading: false,
-  profileName: initialProfileName(),
   storageRoot: "",
   loading: true,
   importing: false,
   error: null,
   appNotice: null,
-
-  toggleTheme: () =>
-    set((s) => {
-      const next: AppTheme = s.appTheme === "dark" ? "light" : "dark";
-      localStorage.setItem(THEME_KEY, next);
-      return { appTheme: next };
-    }),
 
   openAbout: (highlightSince = null) =>
     set({ aboutOpen: true, aboutHighlightSince: highlightSince }),
@@ -255,11 +230,5 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     } catch (e) {
       set({ error: messageOf(e) });
     }
-  },
-
-  setProfileName: (name) => {
-    const trimmed = name.trim() || "Guest library";
-    localStorage.setItem(PROFILE_KEY, trimmed);
-    set({ profileName: trimmed });
   },
 }));

@@ -13,6 +13,7 @@ import {
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { CuratorRail } from "../../components/CuratorRail";
 import { isDesktop } from "../../lib/platform";
+import { setContinueShelfOpen, usePreferences } from "../../lib/preferences";
 import type { Book } from "../../lib/types";
 import { useLibrary } from "../../store/library";
 import { DetailModal } from "./DetailModal";
@@ -25,7 +26,6 @@ import styles from "./Library.module.css";
 /** Cursor must rest on a spine this long before its synopsis surfaces. */
 const PEEK_DELAY_MS = 260;
 const CONTINUE_LIMIT = 8;
-const CONTINUE_OPEN_KEY = "novus.continueShelfOpen";
 
 /**
  * Prevent staleness
@@ -370,6 +370,7 @@ export function Library({ dropping }: LibraryProps) {
   const pickAndImport = useLibrary((s) => s.pickAndImport);
   const removeBookById = useLibrary((s) => s.removeBookById);
   const openReader = useLibrary((s) => s.openReader);
+  const continueOpen = usePreferences((s) => s.continueShelfOpen);
 
   const [selected, setSelected] = useState<Book | null>(null);
   const [selectRect, setSelectRect] = useState<DOMRect | null>(null);
@@ -380,9 +381,6 @@ export function Library({ dropping }: LibraryProps) {
   const [sort, setSort] = useState<SortKey>("recent");
   const [searchOpen, setSearchOpen] = useState(false);
   const [sortMenu, setSortMenu] = useState(false);
-  const [continueOpen, setContinueOpen] = useState(
-    () => localStorage.getItem(CONTINUE_OPEN_KEY) !== "0",
-  );
   const searchRef = useRef<HTMLInputElement>(null);
   const peekTimer = useRef<number | null>(null);
 
@@ -471,8 +469,7 @@ export function Library({ dropping }: LibraryProps) {
 
   const toggleContinue = () => {
     const next = !continueOpen;
-    setContinueOpen(next);
-    localStorage.setItem(CONTINUE_OPEN_KEY, next ? "1" : "0");
+    setContinueShelfOpen(next);
     requestAnimationFrame(remeasureShelves);
   };
 

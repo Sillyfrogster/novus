@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { TocItem } from "../reader/types";
+import type { PreferencesSnapshot } from "./preferences";
 import type {
-  AppTheme,
   Book,
   Collection,
   Highlight,
@@ -9,7 +10,6 @@ import type {
   InsightsData,
   ReadingState,
 } from "./types";
-import type { TocItem } from "../reader/types";
 
 /** Typed wrappers over the Rust command surface. */
 
@@ -24,13 +24,7 @@ export interface ImportSummary {
   failed: ImportFailure[];
 }
 
-export interface LibraryPreferences {
-  appTheme: AppTheme;
-  profileName: string;
-  readerSettings: Record<string, unknown>;
-  highlightColors: Record<string, unknown>;
-  continueShelfOpen: boolean;
-}
+export type LibraryPreferences = PreferencesSnapshot;
 
 export interface BackupSummary {
   createdAt: number;

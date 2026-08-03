@@ -15,17 +15,15 @@ import {
   libraryRestoreStatus,
   rollbackLibraryRestore,
 } from "./lib/ipc";
-import {
-  applyLibraryPreferences,
-  clearPreviousLibraryPreferences,
-  clearRestoredLibraryApplied,
-  markRestoredLibraryApplied,
-  previousLibraryPreferencesSaved,
-  rememberPreviousLibraryPreferences,
-  restorePreviousLibraryPreferences,
-  restoredLibraryApplied,
-} from "./lib/libraryBackup";
 import { isDesktop } from "./lib/platform";
+import {
+  applyRestoredPreferences,
+  clearPreferenceRecovery,
+  preferenceRecoverySaved,
+  recoverPreviousPreferences,
+  restoredPreferencesApplied,
+  usePreferences,
+} from "./lib/preferences";
 import { relaunchApp } from "./lib/updater";
 import { useZoomGuard } from "./lib/useZoomGuard";
 import { appVersion } from "./lib/version";
@@ -39,7 +37,7 @@ const LAST_SEEN_KEY = "novus.lastSeenVersion";
 type StartupState = "checking" | "ready" | "blocked";
 
 export default function App() {
-  const appTheme = useLibrary((s) => s.appTheme);
+  const appTheme = usePreferences((s) => s.appTheme);
   const view = useLibrary((s) => s.view);
   const aboutOpen = useLibrary((s) => s.aboutOpen);
   const loadLibrary = useLibrary((s) => s.loadLibrary);
@@ -167,22 +165,18 @@ async function loadLibraryAfterRestore(loadLibrary: () => Promise<void>): Promis
   }
 
   if (!restore) {
-    clearRestoredLibraryApplied();
-    clearPreviousLibraryPreferences();
+    clearPreferenceRecovery();
     await loadLibrary();
     return true;
   }
 
   if (restore.state === "installed") {
-    if (!restoredLibraryApplied(restore.backupCreatedAt)) {
+    if (!restoredPreferencesApplied(restore.backupCreatedAt)) {
       try {
-        rememberPreviousLibraryPreferences();
-        applyLibraryPreferences(restore.preferences);
-        markRestoredLibraryApplied(restore.backupCreatedAt);
+        applyRestoredPreferences(restore.backupCreatedAt, restore.preferences);
         window.location.reload();
       } catch {
-        clearRestoredLibraryApplied();
-        tryRestorePreviousPreferences();
+        tryRecoverPreviousPreferences();
         await beginRestoreRollback(
           loadLibrary,
           "Novus could not apply the saved preferences. Restart Novus to return to your previous library.",
@@ -193,8 +187,7 @@ async function loadLibraryAfterRestore(loadLibrary: () => Promise<void>): Promis
 
     await loadLibrary();
     if (useLibrary.getState().error) {
-      const preferences = tryRestorePreviousPreferences();
-      clearRestoredLibraryApplied();
+      const preferences = tryRecoverPreviousPreferences();
       await beginRestoreRollback(
         loadLibrary,
         preferences === "failed"
@@ -206,8 +199,7 @@ async function loadLibraryAfterRestore(loadLibrary: () => Promise<void>): Promis
 
     try {
       await finishLibraryRestore();
-      clearRestoredLibraryApplied();
-      clearPreviousLibraryPreferences();
+      clearPreferenceRecovery();
     } catch {
       showRestoreError("Your library is restored, but Novus could not finish cleaning up.");
       return false;
@@ -217,13 +209,12 @@ async function loadLibraryAfterRestore(loadLibrary: () => Promise<void>): Promis
   }
 
   if (restore.state === "failed") {
-    const preferencesWereApplied = restoredLibraryApplied(restore.backupCreatedAt);
-    const preferences = tryRestorePreviousPreferences();
+    const preferencesWereApplied = restoredPreferencesApplied(restore.backupCreatedAt);
+    const preferences = tryRecoverPreviousPreferences();
     let cancelled = true;
     try {
       await cancelLibraryRestore();
-      clearRestoredLibraryApplied();
-      if (preferences !== "failed") clearPreviousLibraryPreferences();
+      if (preferences !== "failed") clearPreferenceRecovery();
     } catch {
       cancelled = false;
     }
@@ -245,13 +236,13 @@ async function loadLibraryAfterRestore(loadLibrary: () => Promise<void>): Promis
     } catch {
       cancelled = false;
     }
-    clearRestoredLibraryApplied();
     if (!cancelled) {
       showRestoreError(
         "Novus could not cancel an unfinished restore. Restart Novus and try again.",
       );
       return false;
     }
+    clearPreferenceRecovery();
     await loadLibrary();
     return true;
   }
@@ -291,10 +282,10 @@ async function beginRestoreRollback(
 
 type PreferenceRecovery = "missing" | "restored" | "failed";
 
-function tryRestorePreviousPreferences(): PreferenceRecovery {
-  if (!previousLibraryPreferencesSaved()) return "missing";
+function tryRecoverPreviousPreferences(): PreferenceRecovery {
+  if (!preferenceRecoverySaved()) return "missing";
   try {
-    restorePreviousLibraryPreferences();
+    recoverPreviousPreferences();
     return "restored";
   } catch {
     return "failed";

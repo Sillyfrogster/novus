@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
 import { messageOf } from "../../lib/errors";
-import type { HighlightColor } from "../../lib/highlightColors";
 import { getReadingState, recordSession, saveReadingState } from "../../lib/ipc";
-import type { Highlight, HighlightColorKey } from "../../lib/types";
+import {
+  type HighlightColors,
+  type ReaderSettings,
+  usePreferences,
+} from "../../lib/preferences";
+import type { Highlight } from "../../lib/types";
 import type {
   ReaderEvent,
   ReaderPresentation,
@@ -15,9 +19,6 @@ import { ReadingSession } from "../../reader/readingSession";
 import type { RenderHighlight, SelectionDetail, TocItem } from "../../reader/types";
 import { useHighlights } from "../../store/highlights";
 import { useLibrary } from "../../store/library";
-import { useReaderSettings, type ReaderSettings } from "../../store/reader";
-
-type ColorMap = Record<HighlightColorKey, HighlightColor>;
 
 const DWELL_SAVE_MS = 3000;
 const UNMOUNT_SAVE_MIN_DWELL_MS = 1500;
@@ -25,7 +26,7 @@ const SESSION_FLUSH_MS = 60_000;
 
 function toPresentation(
   settings: ReaderSettings,
-  colors: ColorMap,
+  colors: HighlightColors,
 ): ReaderPresentation {
   return {
     readTheme: settings.readTheme,
@@ -48,7 +49,7 @@ function toPresentation(
 interface UseBookRendererOptions {
   activeBookId: string | null;
   settings: ReaderSettings;
-  colors: ColorMap;
+  colors: HighlightColors;
   highlights: Highlight[];
   revealChrome: () => void;
 }
@@ -140,8 +141,9 @@ export function useBookRenderer({
       renderer = createReader(hostRef.current);
       viewRef.current = renderer;
       unsubscribe = renderer.subscribe(onReaderEvent);
-      const currentSettings = useReaderSettings.getState();
-      const currentColors = useHighlights.getState().colors;
+      const preferences = usePreferences.getState();
+      const currentSettings = preferences.readerSettings;
+      const currentColors = preferences.highlightColors;
       renderer.configure(toPresentation(currentSettings, currentColors));
       const contents = await renderer.open(currentBook.id);
       if (cancelled) return;

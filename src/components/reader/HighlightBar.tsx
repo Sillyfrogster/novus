@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 
-import { HIGHLIGHT_COLOR_KEYS, type HighlightColor } from "../../lib/highlightColors";
+import {
+  HIGHLIGHT_COLOR_KEYS,
+  type HighlightColors,
+} from "../../lib/preferences";
 import type { HighlightColorKey } from "../../lib/types";
 import { placeHighlightBar } from "./highlightBarPosition";
 import styles from "./HighlightBar.module.css";
 
 interface HighlightBarProps {
   rect: { top: number; bottom: number; left: number; right: number };
-  colors: Record<HighlightColorKey, HighlightColor>;
+  colors: HighlightColors;
   onPick: (color: HighlightColorKey) => void;
   onDismiss: () => void;
 }

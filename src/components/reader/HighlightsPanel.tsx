@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import { RotateCcw, Settings2, X } from "lucide-react";
 
-import { HIGHLIGHT_COLOR_KEYS } from "../../lib/highlightColors";
+import {
+  HIGHLIGHT_COLOR_KEYS,
+  recolorHighlight,
+  renameHighlightColor,
+  resetHighlightColor,
+  usePreferences,
+} from "../../lib/preferences";
 import type { Highlight } from "../../lib/types";
 import { useDialog } from "../../lib/useDialog";
 import { useHighlights } from "../../store/highlights";
@@ -31,11 +37,8 @@ function groupByChapter(highlights: Highlight[]): ChapterGroup[] {
 
 export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
   const highlights = useHighlights((s) => s.highlights);
-  const colors = useHighlights((s) => s.colors);
+  const colors = usePreferences((s) => s.highlightColors);
   const loading = useHighlights((s) => s.loading);
-  const renameColor = useHighlights((s) => s.renameColor);
-  const recolor = useHighlights((s) => s.recolor);
-  const resetColorSlot = useHighlights((s) => s.resetColorSlot);
   const [managing, setManaging] = useState(false);
   const dialogRef = useDialog();
 
@@ -101,19 +104,19 @@ export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
                   className={styles.colorInput}
                   value={colors[key].color}
                   aria-label={`Color for ${colors[key].label}`}
-                  onChange={(e) => recolor(key, e.target.value)}
+                  onChange={(e) => recolorHighlight(key, e.target.value)}
                 />
               </label>
               <input
                 className={styles.nameInput}
                 value={colors[key].label}
-                onChange={(e) => renameColor(key, e.target.value)}
+                onChange={(e) => renameHighlightColor(key, e.target.value)}
                 aria-label={`Name for ${key}`}
               />
               <button
                 type="button"
                 className={styles.resetBtn}
-                onClick={() => resetColorSlot(key)}
+                onClick={() => resetHighlightColor(key)}
                 title="Reset to default"
                 aria-label={`Reset ${key} to default`}
               >

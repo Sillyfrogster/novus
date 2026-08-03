@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Info, Minus, Moon, Square, Sun, X } from "lucide-react";
 
 import { isDesktop } from "../lib/platform";
+import { toggleAppTheme, usePreferences } from "../lib/preferences";
 import { useLibrary } from "../store/library";
 import { Mark } from "./Mark";
 import styles from "./TitleBar.module.css";
@@ -35,8 +36,7 @@ function ResizeHandle({ className, direction }: ResizeHandleProps) {
 }
 
 export function TitleBar({ operationsEnabled = true }: TitleBarProps) {
-  const appTheme = useLibrary((s) => s.appTheme);
-  const toggleTheme = useLibrary((s) => s.toggleTheme);
+  const appTheme = usePreferences((s) => s.appTheme);
   const view = useLibrary((s) => s.view);
   const openAbout = useLibrary((s) => s.openAbout);
 
@@ -83,7 +83,7 @@ export function TitleBar({ operationsEnabled = true }: TitleBarProps) {
             type="button"
             className={styles.btn}
             title={operationsEnabled ? "Toggle theme" : "Available after library recovery"}
-            onClick={toggleTheme}
+            onClick={toggleAppTheme}
             disabled={!operationsEnabled}
           >
             {isDark ? <Moon size={16} strokeWidth={1.7} /> : <Sun size={16} strokeWidth={1.7} />}

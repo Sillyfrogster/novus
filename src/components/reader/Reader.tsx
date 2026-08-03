@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Highlighter, List, X } from "lucide-react";
 
+import { usePreferences } from "../../lib/preferences";
 import type { HighlightColorKey } from "../../lib/types";
 import { useHighlights } from "../../store/highlights";
 import { useLibrary } from "../../store/library";
-import { useReaderSettings } from "../../store/reader";
 import { DisplaySettings } from "./DisplaySettings";
 import { HighlightBar } from "./HighlightBar";
 import { HighlightsPanel } from "./HighlightsPanel";
@@ -18,10 +18,10 @@ export function Reader() {
   const activeBookId = useLibrary((s) => s.activeBookId);
   const books = useLibrary((s) => s.books);
   const goLibrary = useLibrary((s) => s.goLibrary);
-  const settings = useReaderSettings();
+  const settings = usePreferences((s) => s.readerSettings);
+  const colors = usePreferences((s) => s.highlightColors);
 
   const highlights = useHighlights((s) => s.highlights);
-  const colors = useHighlights((s) => s.colors);
 
   const book = books.find((b) => b.id === activeBookId) ?? null;
 

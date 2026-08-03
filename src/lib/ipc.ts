@@ -86,6 +86,23 @@ export function recordSession(session: SessionRecord): Promise<void> {
   return invoke<void>("record_session", { ...session });
 }
 
+export interface DiscordPresence {
+  title: string;
+  chapter: string;
+  currentPage: number | null;
+  totalPages: number | null;
+  progress: number;
+  startedAt: number;
+}
+
+export function setDiscordPresence(presence: DiscordPresence): Promise<void> {
+  return invoke<void>("set_discord_presence", { ...presence });
+}
+
+export function clearDiscordPresence(): Promise<void> {
+  return invoke<void>("clear_discord_presence");
+}
+
 export function insightsData(): Promise<InsightsData> {
   return invoke<InsightsData>("insights_data");
 }

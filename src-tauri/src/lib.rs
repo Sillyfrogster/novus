@@ -2,6 +2,8 @@ mod backup;
 mod commands;
 mod cover_image;
 mod db;
+#[cfg(desktop)]
+mod discord;
 mod error;
 mod import;
 mod publication;
@@ -35,7 +37,8 @@ pub fn run() {
     let builder = builder
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build());
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(discord::DiscordPresence::default());
 
     builder
         .plugin(tauri_plugin_dialog::init())
@@ -124,6 +127,10 @@ pub fn run() {
             commands::write_file,
             #[cfg(desktop)]
             commands::copy_highlight_image,
+            #[cfg(desktop)]
+            discord::set_discord_presence,
+            #[cfg(desktop)]
+            discord::clear_discord_presence,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Highlighter, List, X } from "lucide-react";
 
+import { clearDiscordPresence, setDiscordPresence } from "../../lib/ipc";
+import { isDesktop } from "../../lib/platform";
 import { usePreferences } from "../../lib/preferences";
 import type { HighlightColorKey } from "../../lib/types";
 import { useHighlights } from "../../store/highlights";
@@ -13,6 +15,7 @@ import { WhyBox } from "./WhyBox";
 import styles from "./Reader.module.css";
 
 const CHROME_IDLE_MS = 2600;
+const DISCORD_UPDATE_MS = 4000;
 
 export function Reader() {
   const activeBookId = useLibrary((s) => s.activeBookId);
@@ -31,6 +34,7 @@ export function Reader() {
 
   const chromeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayOpenRef = useRef(false);
+  const sessionStartedAt = useRef(Math.floor(Date.now() / 1000));
 
   useEffect(() => {
     overlayOpenRef.current = settingsOpen || tocOpen || panelOpen;
@@ -97,9 +101,33 @@ export function Reader() {
     }
   }, [settingsOpen, tocOpen, panelOpen, ready, revealChrome]);
 
+  const pct = Math.round(progress * 100);
+
+  useEffect(() => {
+    if (!isDesktop || !book || !ready) return;
+    const hasPages = location && location.total > 0;
+    const timer = setTimeout(() => {
+      void setDiscordPresence({
+        title: book.title,
+        chapter,
+        currentPage: hasPages ? Math.min(location.total, location.current + 1) : null,
+        totalPages: hasPages ? location.total : null,
+        progress: pct,
+        startedAt: sessionStartedAt.current,
+      }).catch(() => {});
+    }, DISCORD_UPDATE_MS);
+    return () => clearTimeout(timer);
+  }, [book, chapter, location, pct, ready]);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    return () => {
+      void clearDiscordPresence().catch(() => {});
+    };
+  }, []);
+
   if (!book) return null;
 
-  const pct = Math.round(progress * 100);
   const pageLabel =
     location && location.total > 0
       ? `Page ${Math.min(location.total, location.current + 1)} of ${location.total}`

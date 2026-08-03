@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { messageOf } from "../../lib/errors";
 import { getReadingState, recordSession, saveReadingState } from "../../lib/ipc";
@@ -7,16 +7,19 @@ import {
   type ReaderSettings,
   usePreferences,
 } from "../../lib/preferences";
-import type { Highlight } from "../../lib/types";
+import type { HighlightColorKey } from "../../lib/types";
 import type {
+  ReaderEngine,
   ReaderEvent,
   ReaderPresentation,
-  ReaderSession,
 } from "../../reader/contract";
-import { loadReaderFactory } from "../../reader/loadReader";
-import { restoreReaderPosition } from "../../reader/navigation";
 import { ReadingSession } from "../../reader/readingSession";
-import type { RenderHighlight, SelectionDetail, TocItem } from "../../reader/types";
+import type {
+  RelocateDetail,
+  RenderHighlight,
+  SelectionDetail,
+  TocItem,
+} from "../../reader/types";
 import { useHighlights } from "../../store/highlights";
 import { useLibrary } from "../../store/library";
 
@@ -46,30 +49,29 @@ function toPresentation(
   };
 }
 
-interface UseBookRendererOptions {
+interface UseReadingSessionOptions {
   activeBookId: string | null;
   settings: ReaderSettings;
   colors: HighlightColors;
-  highlights: Highlight[];
   revealChrome: () => void;
 }
 
-export function useBookRenderer({
+export function useReadingSession({
   activeBookId,
   settings,
   colors,
-  highlights,
   revealChrome,
-}: UseBookRendererOptions) {
+}: UseReadingSessionOptions) {
+  const highlights = useHighlights((state) => state.highlights);
   const hostRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<ReaderSession | null>(null);
+  const rendererRef = useRef<ReaderEngine | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSave = useRef<{ cfi: string | null; fraction: number } | null>(null);
   const lastMoveAt = useRef(0);
   const restored = useRef(false);
-  const session = useRef<ReadingSession | null>(null);
+  const activitySession = useRef<ReadingSession | null>(null);
   const lastFraction = useRef(0);
-  const pendingNewId = useRef<string | null>(null);
+  const emphasizedHighlight = useRef<string | null>(null);
   const revealChromeRef = useRef(revealChrome);
 
   const [ready, setReady] = useState(false);
@@ -89,18 +91,24 @@ export function useBookRenderer({
     if (!currentBook) return;
 
     let cancelled = false;
-    let renderer: ReaderSession | null = null;
+    let renderer: ReaderEngine | null = null;
     let unsubscribe: (() => void) | null = null;
-    const controller = new AbortController();
 
-    const onRelocate = (detail: import("../../reader/types").RelocateDetail) => {
+    setReady(false);
+    setProgress(0);
+    setLocation(null);
+    setChapter("");
+    setToc([]);
+    setSelection(null);
+
+    const onRelocate = (detail: RelocateDetail) => {
       const fraction = detail.fraction ?? 0;
       setProgress(fraction);
       setLocation(detail.location ?? null);
-      if (detail.tocItem?.label) setChapter(detail.tocItem.label);
+      setChapter(detail.tocItem?.label ?? "");
       lastFraction.current = fraction;
       if (!restored.current || detail.reason === "layout") return;
-      session.current?.add(fraction, detail.reason);
+      activitySession.current?.add(fraction, detail.reason);
       lastMoveAt.current = Date.now();
       pendingSave.current = { cfi: detail.cfi ?? null, fraction };
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -112,74 +120,50 @@ export function useBookRenderer({
       }, DWELL_SAVE_MS);
     };
 
-    const onSelection = (detail: SelectionDetail | null) => {
-      setSelection(detail);
-    };
-
     const onReaderEvent = (event: ReaderEvent) => {
       if (event.type === "relocate") onRelocate(event.detail);
-      else if (event.type === "selection") onSelection(event.detail);
+      else if (event.type === "selection") setSelection(event.detail);
       else revealChromeRef.current();
     };
 
     lastFraction.current = 0;
     restored.current = false;
     pendingSave.current = null;
-    session.current = null;
+    activitySession.current = null;
+    emphasizedHighlight.current = null;
 
     const flushSession = () => {
-      const record = session.current?.toRecord(currentBook.id);
+      const record = activitySession.current?.toRecord(currentBook.id);
       if (record) recordSession(record).catch(() => {});
     };
     const flushTimer = setInterval(flushSession, SESSION_FLUSH_MS);
 
     const openBook = async () => {
       if (!hostRef.current || cancelled) return;
-      const createReader = await loadReaderFactory();
+      const { NovusRenderer } = await import("../../reader/NovusRenderer");
+      if (cancelled) return;
+      const pending = useLibrary.getState().consumePendingLocator();
+      const initialTarget = pending ?? (await getReadingState(currentBook.id))?.locator ?? null;
       if (cancelled) return;
 
-      renderer = createReader(hostRef.current);
-      viewRef.current = renderer;
+      renderer = new NovusRenderer(hostRef.current);
+      rendererRef.current = renderer;
       unsubscribe = renderer.subscribe(onReaderEvent);
       const preferences = usePreferences.getState();
       const currentSettings = preferences.readerSettings;
       const currentColors = preferences.highlightColors;
       renderer.configure(toPresentation(currentSettings, currentColors));
-      const contents = await renderer.open(currentBook.id);
+      const contents = await renderer.open(currentBook.id, initialTarget);
       if (cancelled) return;
 
       setToc([...contents]);
-
-      const pending = useLibrary.getState().consumePendingLocator();
-      let displayed: boolean;
-      if (pending) {
-        displayed = await restoreReaderPosition(
-          renderer,
-          contents,
-          pending,
-          controller.signal,
-        );
-      } else {
-        const saved = await getReadingState(currentBook.id);
-        if (cancelled) return;
-        displayed = await restoreReaderPosition(
-          renderer,
-          contents,
-          saved?.locator ?? null,
-          controller.signal,
-        );
-      }
-      if (cancelled) return;
-      if (!displayed) {
-        throw new Error("The book does not have a section Novus can display");
-      }
       restored.current = true;
-      session.current = new ReadingSession(lastFraction.current);
+      activitySession.current = new ReadingSession(lastFraction.current);
       setReady(true);
     };
 
     void openBook().catch((error: unknown) => {
-      if (cancelled || controller.signal.aborted) return;
+      if (cancelled) return;
       const detail = messageOf(error);
       useLibrary.setState({
         error:
@@ -194,7 +178,6 @@ export function useBookRenderer({
 
     return () => {
       cancelled = true;
-      controller.abort();
       if (saveTimer.current) clearTimeout(saveTimer.current);
       const pending = pendingSave.current;
       if (pending && Date.now() - lastMoveAt.current >= UNMOUNT_SAVE_MIN_DWELL_MS) {
@@ -203,16 +186,16 @@ export function useBookRenderer({
       pendingSave.current = null;
       clearInterval(flushTimer);
       flushSession();
-      session.current = null;
+      activitySession.current = null;
       unsubscribe?.();
       renderer?.dispose();
-      viewRef.current = null;
+      rendererRef.current = null;
       setReady(false);
     };
   }, [activeBookId]);
 
   useEffect(() => {
-    const renderer = viewRef.current;
+    const renderer = rendererRef.current;
     if (!renderer || !ready) return;
     renderer.configure(toPresentation(settings, colors));
   }, [ready, settings, colors]);
@@ -222,7 +205,7 @@ export function useBookRenderer({
   }, [activeBookId]);
 
   useEffect(() => {
-    const renderer = viewRef.current;
+    const renderer = rendererRef.current;
     if (!renderer || !ready) return;
     const list: RenderHighlight[] = highlights.map((highlight) => ({
       id: highlight.id,
@@ -230,20 +213,77 @@ export function useBookRenderer({
       color: highlight.color,
       sectionIndex: highlight.sectionIndex,
     }));
-    renderer.replaceHighlights(list, pendingNewId.current ?? undefined);
-    pendingNewId.current = null;
+    const newId = emphasizedHighlight.current;
+    const emphasize = newId && highlights.some((highlight) => highlight.id === newId)
+      ? newId
+      : undefined;
+    renderer.replaceHighlights(list, emphasize);
+    if (emphasize) emphasizedHighlight.current = null;
   }, [ready, highlights]);
+
+  const turn = useCallback((direction: "next" | "previous") => {
+    rendererRef.current?.turn(direction);
+  }, []);
+
+  const goTo = useCallback((target: string) => {
+    const renderer = rendererRef.current;
+    if (renderer) void renderer.navigate({ kind: "target", value: target }).catch(() => {});
+  }, []);
+
+  const goToHighlight = useCallback((cfi: string) => {
+    const renderer = rendererRef.current;
+    if (renderer) void renderer.navigate({ kind: "highlight", value: cfi }).catch(() => {});
+  }, []);
+
+  const dismissSelection = useCallback(() => {
+    rendererRef.current?.clearSelection();
+    setSelection(null);
+  }, []);
+
+  const captureSelection = useCallback(
+    async (color: HighlightColorKey): Promise<string | null> => {
+      if (!activeBookId || !selection?.cfi) return null;
+      const id = crypto.randomUUID();
+      emphasizedHighlight.current = id;
+      const saving = useHighlights.getState().capture({
+        id,
+        bookId: activeBookId,
+        cfi: selection.cfi,
+        text: selection.text,
+        chapterLabel: chapter || null,
+        chapterHref: null,
+        sectionIndex: selection.sectionIndex,
+        location: location?.current ?? null,
+        color,
+      });
+      dismissSelection();
+      const saved = await saving;
+      if (saved && useLibrary.getState().activeBookId === activeBookId) return saved.id;
+      if (emphasizedHighlight.current === id) emphasizedHighlight.current = null;
+      if (!saved) {
+        useLibrary.getState().showAppNotice({
+          text: "Novus could not save this highlight.",
+          tone: "error",
+          persistent: false,
+        });
+      }
+      return null;
+    },
+    [activeBookId, chapter, dismissSelection, location?.current, selection],
+  );
 
   return {
     hostRef,
-    viewRef,
-    pendingNewId,
     ready,
     progress,
     location,
     chapter,
     toc,
     selection,
-    setSelection,
+    turn,
+    goTo,
+    goToHighlight,
+    captureSelection,
+    dismissSelection,
   };
 }

@@ -25,7 +25,6 @@ export interface ReaderPresentation {
 }
 
 export type ReaderDestination =
-  | { kind: "start" }
   | { kind: "target"; value: string }
   | { kind: "highlight"; value: string };
 
@@ -36,8 +35,9 @@ export type ReaderEvent =
 
 export type ReaderListener = (event: ReaderEvent) => void;
 
-export interface ReaderSession {
-  open(bookId: string): Promise<readonly TocItem[]>;
+export interface ReaderEngine {
+  /** Open a book and display its requested position or first readable section. */
+  open(bookId: string, initialTarget?: string | null): Promise<readonly TocItem[]>;
   navigate(destination: ReaderDestination): Promise<boolean>;
   turn(direction: "next" | "previous"): void;
   configure(presentation: ReaderPresentation): void;
@@ -46,5 +46,3 @@ export interface ReaderSession {
   subscribe(listener: ReaderListener): () => void;
   dispose(): void;
 }
-
-export type ReaderFactory = (host: HTMLElement) => ReaderSession;

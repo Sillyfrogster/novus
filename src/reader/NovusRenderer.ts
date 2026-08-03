@@ -4,17 +4,15 @@ import { blockNativeContextMenu } from "../lib/contextMenu";
 import type {
   ReaderDestination,
   ReaderEvent,
+  ReaderEngine,
   ReaderListener,
   ReaderPresentation,
-  ReaderSession,
 } from "./contract";
-import { FrameBatch } from "./FrameBatch";
 import { getVisibleRange, uncollapse, type RectMapper } from "./geometry";
 import { unwrapHighlightMarks, wrapRangeInMarks } from "./highlightMarks";
 import { openPublicationBook } from "./openPublicationBook";
 import { readerCss } from "./presentation";
 import { PUBLICATION_FRAME_SANDBOX } from "./publicationFrame";
-import { bindSelectionEvents } from "./selectionEvents";
 import type {
   BookModel,
   BookSection,
@@ -38,6 +36,84 @@ const RELOCATE_REASON: Record<ScrollReason, RelocateReason> = {
 
 /** Settle delay before a user scroll in scrolled flow is reported as a relocate. */
 const SCROLL_SETTLE_MS = 150;
+const SELECTION_SETTLE_MS = 60;
+
+class FrameBatch {
+  #handle: number | null = null;
+  #task: (() => void) | null = null;
+
+  schedule(task: () => void): void {
+    this.#task = task;
+    if (this.#handle !== null) return;
+
+    this.#handle = requestAnimationFrame(() => {
+      this.#handle = null;
+      const latest = this.#task;
+      this.#task = null;
+      latest?.();
+    });
+  }
+
+  clear(): void {
+    if (this.#handle !== null) cancelAnimationFrame(this.#handle);
+    this.#handle = null;
+    this.#task = null;
+  }
+}
+
+function bindSelectionEvents(
+  target: EventTarget,
+  { onStart, onFinish }: { onStart: () => void; onFinish: () => void },
+  releaseTarget: EventTarget = target,
+): () => void {
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastFinishAt = Number.NEGATIVE_INFINITY;
+  const cancelPendingFinish = () => {
+    if (settleTimer !== null) clearTimeout(settleTimer);
+    settleTimer = null;
+  };
+  const start = () => {
+    cancelPendingFinish();
+    onStart();
+  };
+  const finish = () => {
+    cancelPendingFinish();
+    const now = Date.now();
+    if (now - lastFinishAt < 16) return;
+    lastFinishAt = now;
+    onFinish();
+  };
+  const finishAfterSelectionSettles = () => {
+    cancelPendingFinish();
+    settleTimer = setTimeout(finish, SELECTION_SETTLE_MS);
+  };
+  const releaseTargets = releaseTarget === target ? [target] : [target, releaseTarget];
+
+  target.addEventListener("mousedown", start);
+  target.addEventListener("selectionchange", finishAfterSelectionSettles);
+  for (const release of releaseTargets) {
+    release.addEventListener("mouseup", finish);
+    release.addEventListener("pointerup", finish);
+    release.addEventListener("touchend", finish);
+    release.addEventListener("dragend", finish);
+    release.addEventListener("keyup", finish);
+    release.addEventListener("blur", finishAfterSelectionSettles);
+  }
+
+  return () => {
+    cancelPendingFinish();
+    target.removeEventListener("mousedown", start);
+    target.removeEventListener("selectionchange", finishAfterSelectionSettles);
+    for (const release of releaseTargets) {
+      release.removeEventListener("mouseup", finish);
+      release.removeEventListener("pointerup", finish);
+      release.removeEventListener("touchend", finish);
+      release.removeEventListener("dragend", finish);
+      release.removeEventListener("keyup", finish);
+      release.removeEventListener("blur", finishAfterSelectionSettles);
+    }
+  };
+}
 
 /** Ignore highlight wrappers when saving positions */
 const cfiFilter = (node: Node): number =>
@@ -96,7 +172,7 @@ const IFRAME_STYLE: Partial<CSSStyleDeclaration> = {
   height: "100%",
 };
 
-export class NovusRenderer implements ReaderSession {
+export class NovusRenderer implements ReaderEngine {
   maxInlineSize = 720;
   maxColumnCount = 2;
   gapPercent = 0.07;
@@ -180,7 +256,10 @@ export class NovusRenderer implements ReaderSession {
     for (const listener of this.#listeners) listener(event);
   }
 
-  async open(bookId: string): Promise<readonly TocItem[]> {
+  async open(
+    bookId: string,
+    initialTarget: string | null = null,
+  ): Promise<readonly TocItem[]> {
     if (this.#disposed) throw new Error("Reader is closed");
     if (this.#book) throw new Error("Reader is already open");
 
@@ -203,10 +282,30 @@ export class NovusRenderer implements ReaderSession {
     const getFragment = book.getTOCFragment.bind(book);
     this.#tocProgress = new TOCProgress();
     await this.#tocProgress.init({ toc: book.toc ?? [], ids, splitHref, getFragment });
+    const displayed = (initialTarget ? await this.#restoreTarget(initialTarget) : false) ||
+      (await this.#goToStart());
+    if (!displayed) throw new Error("The book does not have a section Novus can display");
     return this.#toc;
   }
 
   // nav
+
+  async #restoreTarget(target: string): Promise<boolean> {
+    if (await this.#goToTarget(target)) return true;
+    const suffixAt = target.search(/[?#]/);
+    let path = suffixAt < 0 ? target : target.slice(0, suffixAt);
+    try {
+      path = decodeURI(path);
+    } catch {
+    }
+    const name = path.split("/").pop();
+    const section = this.#sections.find(
+      (item) => name && String(item.id).split("/").pop() === name,
+    );
+    if (!section) return false;
+    const suffix = suffixAt < 0 ? "" : target.slice(suffixAt);
+    return this.#goToTarget(`${section.id}${suffix}`);
+  }
 
   /** Resolve a CFI locator synchronously (highlights depend on this being sync). */
   #resolveCfi(cfi: string): { index: number; anchor?: (doc: Document) => Range | Node } | null {
@@ -245,7 +344,6 @@ export class NovusRenderer implements ReaderSession {
 
   async navigate(destination: ReaderDestination): Promise<boolean> {
     if (this.#disposed) return false;
-    if (destination.kind === "start") return this.#goToStart();
     if (destination.kind === "highlight") return this.#goToHighlight(destination.value);
     return this.#goToTarget(destination.value);
   }

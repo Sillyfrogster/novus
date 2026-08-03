@@ -741,15 +741,6 @@ impl Db {
         Ok(())
     }
 
-    pub fn set_highlight_color(&self, id: &str, color: &str) -> AppResult<()> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
-        conn.execute(
-            "UPDATE highlights SET color = ?1 WHERE id = ?2",
-            rusqlite::params![color, id],
-        )?;
-        Ok(())
-    }
-
     /// Set (or clear, with `None`) a highlight's note.
     pub fn set_highlight_note(&self, id: &str, note: Option<String>) -> AppResult<()> {
         let conn = self.conn.lock().expect("db mutex poisoned");

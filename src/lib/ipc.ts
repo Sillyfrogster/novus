@@ -118,10 +118,6 @@ export function addHighlight(h: NewHighlight): Promise<Highlight> {
   return invoke<Highlight>("add_highlight", { ...h });
 }
 
-export function setHighlightColor(id: string, color: HighlightColorKey): Promise<void> {
-  return invoke<void>("set_highlight_color", { id, color });
-}
-
 export function setHighlightNote(id: string, note: string | null): Promise<void> {
   return invoke<void>("set_highlight_note", { id, note });
 }

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MoreHorizontal, X } from "lucide-react";
 
 import { coverUrl } from "../../lib/assets";
@@ -15,7 +15,7 @@ import {
   saveTextFile,
 } from "../../lib/highlightExport";
 import type { Book, Highlight } from "../../lib/types";
-import { useHighlights } from "../../store/highlights";
+import { useHighlightGroups, useHighlights } from "../../store/highlights";
 import { useLibrary } from "../../store/library";
 import { DetailOverview } from "./DetailOverview";
 import { HighlightContextMenu } from "./HighlightContextMenu";
@@ -24,22 +24,6 @@ import { spineLook } from "./spineLook";
 import styles from "./DetailModal.module.css";
 
 type DetailTab = "overview" | "highlights";
-
-interface ChapterGroup {
-  label: string;
-  items: Highlight[];
-}
-
-function groupByChapter(highlights: Highlight[]): ChapterGroup[] {
-  const groups: ChapterGroup[] = [];
-  for (const h of highlights) {
-    const label = h.chapterLabel?.trim() || "Unlabeled";
-    const last = groups[groups.length - 1];
-    if (last && last.label === label) last.items.push(h);
-    else groups.push({ label, items: [h] });
-  }
-  return groups;
-}
 
 function highlightDate(createdAt: number): string {
   return new Date(createdAt * 1000).toLocaleDateString(undefined, {
@@ -85,15 +69,14 @@ export function DetailModal({
   const modalRef = useDialog();
 
   const highlights = useHighlights((s) => s.highlights);
+  const groups = useHighlightGroups();
+  const highlightStatus = useHighlights((s) => s.status);
   const colors = usePreferences((s) => s.highlightColors);
-  const highlightsLoading = useHighlights((s) => s.loading);
   const [tab, setTab] = useState<DetailTab>("overview");
   const [menu, setMenu] = useState<{ x: number; y: number; h: Highlight } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [undo, setUndo] = useState<Highlight | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const groups = useMemo(() => groupByChapter(highlights), [highlights]);
 
   // Load this book's highlights for the Highlights tab.
   useEffect(() => {
@@ -119,10 +102,14 @@ export function DetailModal({
     undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
   };
 
-  const restoreHighlight = () => {
-    if (undo) useHighlights.getState().restore(undo);
+  const restoreHighlight = async () => {
+    if (!undo) return;
     if (undoTimer.current) clearTimeout(undoTimer.current);
-    setUndo(null);
+    if (await useHighlights.getState().restore(undo)) {
+      setUndo(null);
+    } else {
+      showActionNotice("Novus could not restore this highlight.", "error");
+    }
   };
 
   const showActionNotice = (text: string, tone: "error" | "success") => {
@@ -262,9 +249,14 @@ export function DetailModal({
 
           {tab === "highlights" && (
             <div className={styles.hlTab}>
-              {highlightsLoading ? (
+              {highlightStatus === "loading" && highlights.length === 0 ? (
                 <div className={styles.hlEmpty} role="status">
                   <p className={styles.hlEmptyLead}>Loading highlights…</p>
+                </div>
+              ) : highlightStatus === "error" && highlights.length === 0 ? (
+                <div className={styles.hlEmpty} role="alert">
+                  <p className={styles.hlEmptyLead}>Novus could not load these highlights.</p>
+                  <p className={styles.hlEmptyHint}>Close this view and try again.</p>
                 </div>
               ) : highlights.length === 0 ? (
                 <div className={styles.hlEmpty}>

@@ -4,7 +4,6 @@ import {
   addHighlight,
   deleteHighlight,
   listHighlights,
-  setHighlightColor,
   setHighlightNote,
   type NewHighlight,
 } from "../lib/ipc";
@@ -22,100 +21,195 @@ export interface CaptureInput {
   color: HighlightColorKey;
 }
 
-function bookOrder(a: Highlight, b: Highlight): number {
-  if (a.sectionIndex !== b.sectionIndex) return a.sectionIndex - b.sectionIndex;
-  const al = a.location ?? Number.MAX_SAFE_INTEGER;
-  const bl = b.location ?? Number.MAX_SAFE_INTEGER;
-  if (al !== bl) return al - bl;
-  return a.createdAt - b.createdAt;
+interface HighlightGroup {
+  label: string;
+  items: Highlight[];
+}
+
+export interface HighlightsBackend {
+  list: (bookId: string) => Promise<Highlight[]>;
+  add: (highlight: NewHighlight) => Promise<Highlight>;
+  setNote: (id: string, note: string | null) => Promise<void>;
+  remove: (id: string) => Promise<void>;
 }
 
 interface HighlightStore {
   bookId: string | null;
   highlights: Highlight[];
-  loading: boolean;
-
+  status: "idle" | "loading" | "ready" | "error";
   loadFor: (bookId: string) => Promise<void>;
   capture: (input: CaptureInput) => Promise<Highlight | null>;
   updateNote: (id: string, note: string | null) => Promise<void>;
-  setColor: (id: string, color: HighlightColorKey) => Promise<void>;
   remove: (id: string) => Promise<Highlight | null>;
-  restore: (h: Highlight) => Promise<void>;
+  restore: (highlight: Highlight) => Promise<boolean>;
 }
 
-export const useHighlights = create<HighlightStore>((set, get) => ({
-  bookId: null,
-  highlights: [],
-  loading: false,
+const tauriBackend: HighlightsBackend = {
+  list: listHighlights,
+  add: addHighlight,
+  setNote: setHighlightNote,
+  remove: deleteHighlight,
+};
 
-  loadFor: async (bookId) => {
-    set((s) => ({ bookId, loading: true, highlights: s.bookId === bookId ? s.highlights : [] }));
-    try {
-      const highlights = await listHighlights(bookId);
-      if (get().bookId === bookId) set({ highlights, loading: false });
-    } catch {
-      if (get().bookId === bookId) set({ highlights: [], loading: false });
-    }
-  },
+function order(highlights: Highlight[]): Highlight[] {
+  return [...highlights].sort((a, b) => {
+    if (a.sectionIndex !== b.sectionIndex) return a.sectionIndex - b.sectionIndex;
+    const location = (a.location ?? Number.MAX_SAFE_INTEGER) -
+      (b.location ?? Number.MAX_SAFE_INTEGER);
+    return location || a.createdAt - b.createdAt;
+  });
+}
 
-  capture: async ({ id: providedId, ...input }) => {
-    const id = providedId ?? crypto.randomUUID();
-    const payload: NewHighlight = { id, note: null, ...input };
-    const optimistic: Highlight = { ...payload, createdAt: Math.floor(Date.now() / 1000) };
-    set((s) => ({ highlights: [...s.highlights, optimistic].sort(bookOrder) }));
-    try {
-      const saved = await addHighlight(payload);
-      set((s) => ({
-        highlights: s.highlights.map((h) => (h.id === id ? saved : h)).sort(bookOrder),
-      }));
-      return saved;
-    } catch {
-      set((s) => ({ highlights: s.highlights.filter((h) => h.id !== id) }));
-      return null;
-    }
-  },
+export function createHighlightsStore(backend: HighlightsBackend) {
+  let loadSequence = 0;
+  let readyBook: string | null = null;
+  let pendingLoad: { bookId: string; promise: Promise<void> } | null = null;
+  let backendQueue = Promise.resolve();
 
-  updateNote: async (id, note) => {
-    const clean = note && note.trim() ? note.trim() : null;
-    const prev = get().highlights;
-    set((s) => ({ highlights: s.highlights.map((h) => (h.id === id ? { ...h, note: clean } : h)) }));
-    try {
-      await setHighlightNote(id, clean);
-    } catch {
-      set({ highlights: prev });
-    }
-  },
+  const run = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = backendQueue.then(operation);
+    backendQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
 
-  setColor: async (id, color) => {
-    const prev = get().highlights;
-    set((s) => ({ highlights: s.highlights.map((h) => (h.id === id ? { ...h, color } : h)) }));
-    try {
-      await setHighlightColor(id, color);
-    } catch {
-      set({ highlights: prev });
-    }
-  },
+  return create<HighlightStore>((set, get) => {
+    const change = (
+      bookId: string,
+      update: (highlights: Highlight[]) => Highlight[],
+      reorder = false,
+    ) => {
+      set((state) => {
+        if (state.bookId !== bookId) return state;
+        const highlights = update(state.highlights);
+        return { highlights: reorder ? order(highlights) : highlights };
+      });
+    };
 
-  remove: async (id) => {
-    const removed = get().highlights.find((h) => h.id === id) ?? null;
-    set((s) => ({ highlights: s.highlights.filter((h) => h.id !== id) }));
-    try {
-      await deleteHighlight(id);
-      return removed;
-    } catch {
-      if (removed) set((s) => ({ highlights: [...s.highlights, removed].sort(bookOrder) }));
-      return null;
-    }
-  },
+    const loadFor = (bookId: string): Promise<void> => {
+      const state = get();
+      if (pendingLoad?.bookId === bookId) return pendingLoad.promise;
+      const sequence = ++loadSequence;
+      if (state.bookId !== bookId) readyBook = null;
+      set((current) =>
+        current.bookId === bookId
+          ? { status: "loading" }
+          : { bookId, highlights: [], status: "loading" },
+      );
+      const promise = run(() => backend.list(bookId))
+        .then((highlights) => {
+          if (sequence === loadSequence && get().bookId === bookId) {
+            readyBook = bookId;
+            set({ highlights: order(highlights), status: "ready" });
+          }
+        })
+        .catch(() => {
+          if (sequence === loadSequence && get().bookId === bookId) {
+            set({ status: "error" });
+          }
+        })
+        .finally(() => {
+          if (sequence === loadSequence) pendingLoad = null;
+        });
+      pendingLoad = { bookId, promise };
+      return promise;
+    };
 
-  restore: async (h) => {
-    set((s) => ({ highlights: [...s.highlights, h].sort(bookOrder) }));
-    try {
-      const { createdAt, ...rest } = h;
-      void createdAt;
-      await addHighlight(rest);
-    } catch {
-      set((s) => ({ highlights: s.highlights.filter((x) => x.id !== h.id) }));
+    const readyFor = async (bookId: string): Promise<boolean> => {
+      if (get().bookId !== bookId) await loadFor(bookId);
+      else if (pendingLoad?.bookId === bookId) await pendingLoad.promise;
+      return get().bookId === bookId && readyBook === bookId;
+    };
+
+    return {
+      bookId: null,
+      highlights: [],
+      status: "idle",
+      loadFor,
+
+      capture: async ({ id: providedId, ...input }) => {
+        if (!(await readyFor(input.bookId))) return null;
+        const id = providedId ?? crypto.randomUUID();
+        const payload: NewHighlight = { id, note: null, ...input };
+        try {
+          const saved = await run(() => backend.add(payload));
+          change(
+            input.bookId,
+            (highlights) => [...highlights, saved],
+            true,
+          );
+          return saved;
+        } catch {
+          return null;
+        }
+      },
+
+      updateNote: async (id, note) => {
+        const bookId = get().bookId;
+        if (!bookId || !(await readyFor(bookId))) return;
+        if (!get().highlights.some((highlight) => highlight.id === id)) return;
+        const clean = note?.trim() || null;
+        try {
+          await run(() => backend.setNote(id, clean));
+          change(bookId, (highlights) =>
+            highlights.map((highlight) =>
+              highlight.id === id ? { ...highlight, note: clean } : highlight,
+            ),
+          );
+        } catch {
+          // The visible note remains at its durable value.
+        }
+      },
+
+      remove: async (id) => {
+        const bookId = get().bookId;
+        if (!bookId || !(await readyFor(bookId))) return null;
+        const removed = get().highlights.find((highlight) => highlight.id === id) ?? null;
+        if (!removed) return null;
+        try {
+          await run(() => backend.remove(id));
+          change(bookId, (highlights) =>
+            highlights.filter((highlight) => highlight.id !== id),
+          );
+          return removed;
+        } catch {
+          return null;
+        }
+      },
+
+      restore: async (highlight) => {
+        if (!(await readyFor(highlight.bookId))) return false;
+        if (get().highlights.some((item) => item.id === highlight.id)) return true;
+        const { createdAt: _, ...payload } = highlight;
+        try {
+          const saved = await run(() => backend.add(payload));
+          change(highlight.bookId, (highlights) => [...highlights, saved], true);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    };
+  });
+}
+
+export const useHighlights = createHighlightsStore(tauriBackend);
+
+let groupCache: { highlights: Highlight[]; groups: HighlightGroup[] } | null = null;
+
+export function useHighlightGroups(): HighlightGroup[] {
+  return useHighlights((state) => {
+    if (groupCache?.highlights === state.highlights) return groupCache.groups;
+    const groups: HighlightGroup[] = [];
+    for (const highlight of state.highlights) {
+      const label = highlight.chapterLabel?.trim() || "Unlabeled";
+      const last = groups[groups.length - 1];
+      if (last?.label === label) last.items.push(highlight);
+      else groups.push({ label, items: [highlight] });
     }
-  },
-}));
+    groupCache = { highlights: state.highlights, groups };
+    return groups;
+  });
+}

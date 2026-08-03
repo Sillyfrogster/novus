@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { RotateCcw, Settings2, X } from "lucide-react";
 
 import {
@@ -8,9 +8,8 @@ import {
   resetHighlightColor,
   usePreferences,
 } from "../../lib/preferences";
-import type { Highlight } from "../../lib/types";
 import { useDialog } from "../../lib/useDialog";
-import { useHighlights } from "../../store/highlights";
+import { useHighlightGroups, useHighlights } from "../../store/highlights";
 import styles from "./HighlightsPanel.module.css";
 
 interface HighlightsPanelProps {
@@ -18,31 +17,13 @@ interface HighlightsPanelProps {
   onClose: () => void;
 }
 
-interface ChapterGroup {
-  label: string;
-  items: Highlight[];
-}
-
-/** Group highlights by chapter */
-function groupByChapter(highlights: Highlight[]): ChapterGroup[] {
-  const groups: ChapterGroup[] = [];
-  for (const h of highlights) {
-    const label = h.chapterLabel?.trim() || "Unlabeled";
-    const last = groups[groups.length - 1];
-    if (last && last.label === label) last.items.push(h);
-    else groups.push({ label, items: [h] });
-  }
-  return groups;
-}
-
 export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
   const highlights = useHighlights((s) => s.highlights);
+  const groups = useHighlightGroups();
+  const status = useHighlights((s) => s.status);
   const colors = usePreferences((s) => s.highlightColors);
-  const loading = useHighlights((s) => s.loading);
   const [managing, setManaging] = useState(false);
   const dialogRef = useDialog();
-
-  const groups = useMemo(() => groupByChapter(highlights), [highlights]);
 
   return (
     <dialog
@@ -127,10 +108,15 @@ export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
         </div>
       )}
 
-      <div className={styles.list} aria-busy={loading}>
-        {loading ? (
+      <div className={styles.list} aria-busy={status === "loading"}>
+        {status === "loading" && highlights.length === 0 ? (
           <div className={styles.empty} role="status">
             <p className={styles.emptyLead}>Loading highlights…</p>
+          </div>
+        ) : status === "error" && highlights.length === 0 ? (
+          <div className={styles.empty} role="alert">
+            <p className={styles.emptyLead}>Novus could not load these highlights.</p>
+            <p className={styles.emptyHint}>Close this panel and try again.</p>
           </div>
         ) : highlights.length === 0 ? (
           <div className={styles.empty}>

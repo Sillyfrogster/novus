@@ -118,7 +118,6 @@ pub fn run() {
             commands::set_zoom_locked,
             commands::list_highlights,
             commands::add_highlight,
-            commands::set_highlight_color,
             commands::set_highlight_note,
             commands::delete_highlight,
             commands::write_file,

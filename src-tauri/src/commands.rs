@@ -282,11 +282,6 @@ pub fn add_highlight(
     Ok(highlight)
 }
 
-#[tauri::command]
-pub fn set_highlight_color(state: State<'_, Novus>, id: String, color: String) -> AppResult<()> {
-    state.db.set_highlight_color(&id, &color)
-}
-
 /// Set or clear (with `null`) a highlight's note.
 #[tauri::command]
 pub fn set_highlight_note(

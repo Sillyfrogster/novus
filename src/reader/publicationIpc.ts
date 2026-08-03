@@ -13,6 +13,7 @@ export interface PublicationSectionDescription {
 
 export interface OpenedPublication {
   session: string;
+  savedLocator: string | null;
   packagePath: string;
   package: string;
   sections: PublicationSectionDescription[];

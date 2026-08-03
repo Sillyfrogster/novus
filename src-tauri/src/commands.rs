@@ -12,7 +12,7 @@ use crate::backup::{
     cancel_restore, commit_restore, create_backup, finish_restore, prepare_restore,
     request_restore_rollback, restore_status, BackupSummary, RestoreStatus, RestoreSummary,
 };
-use crate::db::{now_seconds, Book, Collection, Highlight, InsightsData, ReadingState};
+use crate::db::{now_seconds, Book, Collection, Highlight, InsightsData};
 use crate::error::{AppError, AppResult};
 use crate::import::{import_paths, ImportSummary};
 use crate::publication::{ContentsItem, PublicationArchive};
@@ -127,12 +127,6 @@ pub async fn import_books(state: State<'_, Novus>, paths: Vec<String>) -> AppRes
         Ok(import_paths(&storage, &db, paths))
     })
     .await
-}
-
-/// A book's saved reading position, if any.
-#[tauri::command]
-pub fn get_reading_state(state: State<'_, Novus>, id: String) -> AppResult<Option<ReadingState>> {
-    state.db.get_reading_state(&id)
 }
 
 /// Persist a book's reading position and progress.

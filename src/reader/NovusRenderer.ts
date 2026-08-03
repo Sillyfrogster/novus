@@ -263,7 +263,7 @@ export class NovusRenderer implements ReaderEngine {
     if (this.#disposed) throw new Error("Reader is closed");
     if (this.#book) throw new Error("Reader is already open");
 
-    const [book, { SectionProgress, TOCProgress }] = await Promise.all([
+    const [{ book, savedLocator }, { SectionProgress, TOCProgress }] = await Promise.all([
       openPublicationBook(bookId),
       import("../../vendor/foliate-js/progress.js"),
     ]);
@@ -282,7 +282,8 @@ export class NovusRenderer implements ReaderEngine {
     const getFragment = book.getTOCFragment.bind(book);
     this.#tocProgress = new TOCProgress();
     await this.#tocProgress.init({ toc: book.toc ?? [], ids, splitHref, getFragment });
-    const displayed = (initialTarget ? await this.#restoreTarget(initialTarget) : false) ||
+    const target = initialTarget ?? savedLocator;
+    const displayed = (target ? await this.#restoreTarget(target) : false) ||
       (await this.#goToStart());
     if (!displayed) throw new Error("The book does not have a section Novus can display");
     return this.#toc;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { messageOf } from "../../lib/errors";
-import { getReadingState, recordSession, saveReadingState } from "../../lib/ipc";
+import { recordSession, saveReadingState } from "../../lib/ipc";
 import {
   type HighlightColors,
   type ReaderSettings,
@@ -143,8 +143,6 @@ export function useReadingSession({
       const { NovusRenderer } = await import("../../reader/NovusRenderer");
       if (cancelled) return;
       const pending = useLibrary.getState().consumePendingLocator();
-      const initialTarget = pending ?? (await getReadingState(currentBook.id))?.locator ?? null;
-      if (cancelled) return;
 
       renderer = new NovusRenderer(hostRef.current);
       rendererRef.current = renderer;
@@ -153,7 +151,7 @@ export function useReadingSession({
       const currentSettings = preferences.readerSettings;
       const currentColors = preferences.highlightColors;
       renderer.configure(toPresentation(currentSettings, currentColors));
-      const contents = await renderer.open(currentBook.id, initialTarget);
+      const contents = await renderer.open(currentBook.id, pending);
       if (cancelled) return;
 
       setToc([...contents]);

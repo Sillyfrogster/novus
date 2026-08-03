@@ -15,12 +15,6 @@ export interface Book {
   lastReadAt: number | null;
 }
 
-export interface ReadingState {
-  locator: string | null;
-  progress: number;
-  lastReadAt: number | null;
-}
-
 export interface Collection {
   id: number;
   name: string;

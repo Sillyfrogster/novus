@@ -143,7 +143,9 @@ function createSection(
   };
 }
 
-export async function openPublicationBook(bookId: string): Promise<BookModel> {
+export async function openPublicationBook(
+  bookId: string,
+): Promise<{ book: BookModel; savedLocator: string | null }> {
   const opened = await openPublication(bookId);
 
   try {
@@ -188,7 +190,7 @@ export async function openPublicationBook(bookId: string): Promise<BookModel> {
           };
     };
 
-    return {
+    const book: BookModel = {
       sections,
       toc: opened.contents,
       resolveCFI(cfi) {
@@ -215,6 +217,7 @@ export async function openPublicationBook(bookId: string): Promise<BookModel> {
         void closePublication(opened.session).catch(() => {});
       },
     };
+    return { book, savedLocator: opened.savedLocator };
   } catch (error) {
     await closePublication(opened.session).catch(() => {});
     throw error;

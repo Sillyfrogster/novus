@@ -7,7 +7,6 @@ import type {
   Highlight,
   HighlightColorKey,
   InsightsData,
-  ReadingState,
 } from "./types";
 
 /** Typed wrappers over the Rust command surface. */
@@ -41,10 +40,6 @@ export function removeBook(id: string): Promise<void> {
 
 export function bookToc(id: string): Promise<TocItem[]> {
   return invoke<TocItem[]>("book_toc", { id });
-}
-
-export function getReadingState(id: string): Promise<ReadingState | null> {
-  return invoke<ReadingState | null>("get_reading_state", { id });
 }
 
 export function saveReadingState(

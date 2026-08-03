@@ -39,12 +39,18 @@ struct PublicationSession {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct OpenedPublication {
     session: String,
+    saved_locator: Option<String>,
     #[serde(flatten)]
     publication: PublicationDescription,
 }
 
 impl PublicationRegistry {
-    fn insert(&self, owner: String, archive: Arc<PublicationArchive>) -> OpenedPublication {
+    fn insert(
+        &self,
+        owner: String,
+        archive: Arc<PublicationArchive>,
+        saved_locator: Option<String>,
+    ) -> OpenedPublication {
         let publication = archive.description().clone();
         let mut state = self.shared.write().expect("publication registry poisoned");
         let session = loop {
@@ -66,6 +72,7 @@ impl PublicationRegistry {
 
         OpenedPublication {
             session: session.to_string(),
+            saved_locator,
             publication,
         }
     }
@@ -120,7 +127,7 @@ pub(crate) async fn publication_open(
     let owner = window.label().to_owned();
     let registry = registry.inner().clone();
 
-    let archive = tauri::async_runtime::spawn_blocking(move || {
+    let (archive, saved_locator) = tauri::async_runtime::spawn_blocking(move || {
         let book = db
             .get_book(&book_id)
             .map_err(|_| public_error(OPEN_ERROR))?
@@ -135,12 +142,17 @@ pub(crate) async fn publication_open(
                 .map_err(|_| public_error(OPEN_ERROR))?;
             std::fs::read(path).map_err(|_| public_error(OPEN_ERROR))?
         };
-        PublicationArchive::parse(Arc::from(bytes)).map_err(|_| public_error(OPEN_ERROR))
+        let archive =
+            PublicationArchive::parse(Arc::from(bytes)).map_err(|_| public_error(OPEN_ERROR))?;
+        let saved_locator = db
+            .reading_locator(&book_id)
+            .map_err(|_| public_error(OPEN_ERROR))?;
+        Ok((archive, saved_locator))
     })
     .await
     .map_err(|_| public_error(OPEN_ERROR))??;
 
-    Ok(registry.insert(owner, Arc::new(archive)))
+    Ok(registry.insert(owner, Arc::new(archive), saved_locator))
 }
 
 #[tauri::command]
@@ -485,7 +497,7 @@ mod tests {
         let mut sessions = Vec::new();
 
         for _ in 0..=MAX_OPEN_PUBLICATIONS {
-            let opened = registry.insert("reader".to_owned(), archive.clone());
+            let opened = registry.insert("reader".to_owned(), archive.clone(), None);
             sessions.push(Uuid::parse_str(&opened.session).unwrap());
         }
 
@@ -502,7 +514,7 @@ mod tests {
     #[test]
     fn protocol_responses_support_ranges_head_and_options() {
         let registry = PublicationRegistry::default();
-        let opened = registry.insert("reader".to_owned(), publication());
+        let opened = registry.insert("reader".to_owned(), publication(), None);
         let uri = format!("novus-epub://localhost/{}/OPS/image.png", opened.session);
         let request = Request::builder()
             .uri(&uri)

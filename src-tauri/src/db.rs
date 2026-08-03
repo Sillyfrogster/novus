@@ -35,15 +35,6 @@ pub struct Book {
     pub last_read_at: Option<i64>,
 }
 
-/// A book's saved reading position.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReadingState {
-    pub locator: Option<String>,
-    pub progress: f64,
-    pub last_read_at: Option<i64>,
-}
-
 /// A user-made collection and the ids of the books it holds.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -348,26 +339,19 @@ impl Db {
         Ok(())
     }
 
-    pub fn get_reading_state(&self, book_id: &str) -> AppResult<Option<ReadingState>> {
+    pub fn reading_locator(&self, book_id: &str) -> AppResult<Option<String>> {
         let conn = self.conn.lock().expect("db mutex poisoned");
-        let state = conn
+        let locator = conn
             .query_row(
-                "SELECT locator, progress, last_read_at FROM reading_state WHERE book_id = ?1",
+                "SELECT locator FROM reading_state WHERE book_id = ?1",
                 [book_id],
-                |r| {
-                    Ok(ReadingState {
-                        locator: r.get(0)?,
-                        progress: r.get(1)?,
-                        last_read_at: r.get(2)?,
-                    })
-                },
+                |row| row.get(0),
             )
-            .map(Some)
             .or_else(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),
                 other => Err(other),
             })?;
-        Ok(state)
+        Ok(locator)
     }
 
     // collections

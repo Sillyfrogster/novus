@@ -108,7 +108,6 @@ pub fn run() {
             publication::registry::publication_open,
             publication::registry::publication_section,
             publication::registry::publication_close,
-            commands::get_reading_state,
             commands::save_reading_state,
             commands::list_collections,
             commands::create_collection,

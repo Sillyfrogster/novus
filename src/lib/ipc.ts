@@ -8,8 +8,8 @@ import type {
   HighlightColorKey,
   InsightsData,
   ReadingState,
-  TocEntry,
 } from "./types";
+import type { TocItem } from "../reader/types";
 
 /** Typed wrappers over the Rust command surface. */
 
@@ -107,8 +107,8 @@ export function removeBook(id: string): Promise<void> {
   return invoke<void>("remove_book", { id });
 }
 
-export function bookToc(id: string): Promise<TocEntry[]> {
-  return invoke<TocEntry[]>("book_toc", { id });
+export function bookToc(id: string): Promise<TocItem[]> {
+  return invoke<TocItem[]>("book_toc", { id });
 }
 
 export function getReadingState(id: string): Promise<ReadingState | null> {

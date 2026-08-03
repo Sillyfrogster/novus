@@ -103,6 +103,21 @@ pub(crate) struct PublicationDescription {
     pub(crate) contents: Vec<ContentsItem>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct PublicationMetadata {
+    pub(crate) title: Option<String>,
+    pub(crate) author: Option<String>,
+    pub(crate) language: Option<String>,
+    pub(crate) description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PublicationCover {
+    pub(crate) href: String,
+    pub(crate) media_type: String,
+    pub(crate) bytes: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PublicationSection {
@@ -139,6 +154,8 @@ pub(crate) struct PublicationArchive {
     media_types: HashMap<String, String>,
     obfuscations: HashMap<String, FontObfuscation>,
     description: PublicationDescription,
+    metadata: PublicationMetadata,
+    cover: Option<CoverResource>,
     limits: ArchiveLimits,
 }
 
@@ -157,6 +174,12 @@ struct ManifestItem {
     properties: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+struct CoverResource {
+    href: String,
+    media_type: String,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ArchiveLimits {
     entry_count: usize,
@@ -173,6 +196,21 @@ impl PublicationArchive {
 
     pub(crate) fn description(&self) -> &PublicationDescription {
         &self.description
+    }
+
+    pub(crate) fn metadata(&self) -> &PublicationMetadata {
+        &self.metadata
+    }
+
+    pub(crate) fn load_cover(&self) -> Result<Option<PublicationCover>, PublicationError> {
+        let Some(cover) = &self.cover else {
+            return Ok(None);
+        };
+        Ok(Some(PublicationCover {
+            href: cover.href.clone(),
+            media_type: cover.media_type.clone(),
+            bytes: self.read_resource(&cover.href)?,
+        }))
     }
 
     pub(crate) fn load_section(&self, index: usize) -> Result<LoadedSection, PublicationError> {
@@ -274,6 +312,8 @@ impl PublicationArchive {
                 sections: parsed_package.sections,
                 contents,
             },
+            metadata: parsed_package.metadata,
+            cover: parsed_package.cover,
             limits,
         })
     }
@@ -293,6 +333,8 @@ struct ParsedPackage {
     manifest: Vec<ManifestItem>,
     sections: Vec<PublicationSection>,
     ncx_id: Option<String>,
+    metadata: PublicationMetadata,
+    cover: Option<CoverResource>,
 }
 
 fn validate_archive(
@@ -510,6 +552,20 @@ fn parse_package(
     let spine = opf_child(package, "spine", namespace).ok_or(PublicationError::MissingSpine)?;
 
     let (unique_identifier, identifiers) = package_identifiers(package, metadata);
+    let publication_metadata = PublicationMetadata {
+        title: metadata_value(metadata, "title"),
+        author: metadata_value(metadata, "creator"),
+        language: metadata_value(metadata, "language"),
+        description: metadata_value(metadata, "description")
+            .map(|value| clean_description(&value))
+            .filter(|value| !value.is_empty()),
+    };
+    let legacy_cover_id = metadata.and_then(|metadata| {
+        opf_children(metadata, "meta", namespace)
+            .find(|node| node.attribute("name") == Some("cover"))
+            .and_then(|node| node.attribute("content"))
+            .map(str::to_owned)
+    });
     let mut manifest = Vec::new();
     let mut manifest_ids = HashMap::new();
 
@@ -549,6 +605,23 @@ fn parse_package(
         return Err(PublicationError::MissingManifest);
     }
 
+    let cover = manifest
+        .iter()
+        .find(|item| {
+            item.properties
+                .iter()
+                .any(|property| property == "cover-image")
+        })
+        .or_else(|| {
+            legacy_cover_id
+                .as_deref()
+                .and_then(|id| manifest.iter().find(|item| item.id == id))
+        })
+        .map(|item| CoverResource {
+            href: item.path.clone(),
+            media_type: item.media_type.clone(),
+        });
+
     let mut sections = Vec::new();
     for (spine_index, itemref) in opf_children(spine, "itemref", namespace).enumerate() {
         let Some(idref) = itemref.attribute("idref") else {
@@ -584,6 +657,8 @@ fn parse_package(
         manifest,
         sections,
         ncx_id: spine.attribute("toc").map(str::to_owned),
+        metadata: publication_metadata,
+        cover,
     })
 }
 
@@ -871,6 +946,40 @@ fn package_identifiers(
     (unique_identifier, identifiers)
 }
 
+fn metadata_value(metadata: Option<Node<'_, '_>>, name: &str) -> Option<String> {
+    let metadata = metadata?;
+    let node = metadata
+        .children()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == name
+                && node.tag_name().namespace() == Some(DC_NAMESPACE)
+        })
+        .or_else(|| {
+            metadata.children().find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == name
+                    && node.tag_name().namespace().is_none()
+            })
+        })?;
+    let value = normalize_whitespace(&raw_text(node));
+    (!value.is_empty()).then_some(value)
+}
+
+fn clean_description(value: &str) -> String {
+    let mut text = String::with_capacity(value.len());
+    let mut in_tag = false;
+    for character in value.chars() {
+        match character {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(character),
+            _ => {}
+        }
+    }
+    normalize_whitespace(&text)
+}
+
 fn raw_text(node: Node<'_, '_>) -> String {
     node.descendants()
         .filter(|descendant| descendant.is_text())
@@ -1095,12 +1204,20 @@ mod tests {
     #[test]
     fn parses_epub3_nested_navigation_and_original_spine_ordinals() {
         let package_text = r#"<?xml version="1.0"?>
-<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid" version="3.0">
-  <metadata><dc:identifier xmlns:dc="http://purl.org/dc/elements/1.1/" id="uid">book-id</dc:identifier></metadata>
+<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:other="urn:example:other" unique-identifier="uid" version="3.0">
+  <metadata>
+    <dc:identifier id="uid">book-id</dc:identifier>
+    <dc:title> The Example Book </dc:title>
+    <dc:creator>Writer Name</dc:creator>
+    <dc:language>en</dc:language>
+    <dc:description>&lt;p&gt;A short &lt;em&gt;synopsis&lt;/em&gt;.&lt;/p&gt;</dc:description>
+    <other:title>Wrong title</other:title>
+  </metadata>
   <manifest>
     <item id="gone" href="Text/gone.xhtml" media-type="application/xhtml+xml"/>
     <item id="chapter" href="Text/chapter%20one.xhtml" media-type="application/xhtml+xml"/>
-    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="cover-image nav"/>
+    <item id="cover" href="Images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
   </manifest>
   <spine>
     <itemref idref="gone"/>
@@ -1138,11 +1255,33 @@ mod tests {
                 chapter,
                 CompressionMethod::Deflated,
             ),
+            (
+                "OPS/Images/cover.jpg",
+                b"cover bytes".to_vec(),
+                CompressionMethod::Stored,
+            ),
         ]);
 
         let publication = PublicationArchive::parse(source).unwrap();
         let description = publication.description();
 
+        assert_eq!(
+            publication.metadata(),
+            &PublicationMetadata {
+                title: Some("The Example Book".to_owned()),
+                author: Some("Writer Name".to_owned()),
+                language: Some("en".to_owned()),
+                description: Some("A short synopsis.".to_owned()),
+            }
+        );
+        assert_eq!(
+            publication.load_cover().unwrap(),
+            Some(PublicationCover {
+                href: "OPS/Images/cover.jpg".to_owned(),
+                media_type: "image/jpeg".to_owned(),
+                bytes: b"cover bytes".to_vec(),
+            })
+        );
         assert_eq!(description.package_path, "OPS/package file.opf");
         assert_eq!(description.package, package_text);
         assert_eq!(description.sections.len(), 1);
@@ -1197,9 +1336,13 @@ mod tests {
     fn falls_back_to_nested_epub2_ncx() {
         let package = br#"<?xml version="1.0"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uid" version="2.0">
-  <metadata><dc:identifier xmlns:dc="http://purl.org/dc/elements/1.1/" id="uid">legacy</dc:identifier></metadata>
+  <metadata>
+    <dc:identifier xmlns:dc="http://purl.org/dc/elements/1.1/" id="uid">legacy</dc:identifier>
+    <meta name="cover" content="legacy-cover"/>
+  </metadata>
   <manifest>
     <item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/>
+    <item id="legacy-cover" href="Images/cover.png" media-type="image/png"/>
     <item id="other-ncx" href="other.ncx" media-type="application/x-dtbncx+xml"/>
     <item id="toc" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
   </manifest>
@@ -1227,6 +1370,11 @@ mod tests {
                 CompressionMethod::Stored,
             ),
             (
+                "Images/cover.png",
+                b"legacy cover".to_vec(),
+                CompressionMethod::Stored,
+            ),
+            (
                 "other.ncx",
                 b"<ncx><navMap/></ncx>".to_vec(),
                 CompressionMethod::Stored,
@@ -1241,6 +1389,14 @@ mod tests {
         assert_eq!(contents[0].href, "Text/chapter.xhtml#start here");
         assert_eq!(contents[0].subitems[0].label, "Child");
         assert_eq!(contents[0].subitems[0].href, "Text/chapter.xhtml#child");
+        assert_eq!(
+            publication.load_cover().unwrap(),
+            Some(PublicationCover {
+                href: "Images/cover.png".to_owned(),
+                media_type: "image/png".to_owned(),
+                bytes: b"legacy cover".to_vec(),
+            })
+        );
     }
 
     #[test]

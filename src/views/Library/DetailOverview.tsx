@@ -2,11 +2,25 @@ import { Check, Play, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { bookToc } from "../../lib/ipc";
-import type { Book, TocEntry } from "../../lib/types";
+import type { Book } from "../../lib/types";
+import type { TocItem } from "../../reader/types";
 import { useLibrary } from "../../store/library";
 import styles from "./DetailModal.module.css";
 
 const TOC_COLLAPSED = 8;
+
+interface FlatTocItem {
+  label: string;
+  href: string;
+  depth: number;
+}
+
+function flattenContents(items: readonly TocItem[], depth = 0): FlatTocItem[] {
+  return items.flatMap((item) => [
+    { label: item.label, href: item.href, depth },
+    ...flattenContents(item.subitems ?? [], depth + 1),
+  ]);
+}
 
 function addedDate(addedAt: number): string {
   return new Date(addedAt * 1000).toLocaleDateString(undefined, {
@@ -41,14 +55,14 @@ export function DetailOverview({ book, onRead, onRemove }: DetailOverviewProps) 
   const [progress, setProgress] = useState(() => book.progress);
   const [newOpen, setNewOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [toc, setToc] = useState<TocEntry[] | null>(null);
+  const [toc, setToc] = useState<FlatTocItem[] | null>(null);
   const [tocExpanded, setTocExpanded] = useState(false);
 
   useEffect(() => {
     let active = true;
     void bookToc(book.id)
       .then((entries) => {
-        if (active) setToc(entries);
+        if (active) setToc(flattenContents(entries));
       })
       .catch(() => {
         if (active) setToc([]);

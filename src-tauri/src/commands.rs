@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use tauri::{AppHandle, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -11,7 +12,8 @@ use crate::backup::{
 };
 use crate::db::{now_seconds, Book, Collection, Highlight, InsightsData, ReadingState};
 use crate::error::{AppError, AppResult};
-use crate::import::{import_paths, read_epub_toc, ImportSummary, TocEntry};
+use crate::import::{import_paths, ImportSummary};
+use crate::publication::{ContentsItem, PublicationArchive};
 use crate::{Novus, ZoomGuard};
 
 async fn run_blocking<T, F>(failure: &'static str, operation: F) -> AppResult<T>
@@ -143,7 +145,7 @@ pub fn save_reading_state(
 }
 
 #[tauri::command]
-pub async fn book_toc(state: State<'_, Novus>, id: String) -> AppResult<Vec<TocEntry>> {
+pub async fn book_toc(state: State<'_, Novus>, id: String) -> AppResult<Vec<ContentsItem>> {
     let storage = state.storage.clone();
     let db = state.db.clone();
     let gate = state.content_gate.clone();
@@ -153,7 +155,9 @@ pub async fn book_toc(state: State<'_, Novus>, id: String) -> AppResult<Vec<TocE
             return Ok(Vec::new());
         };
         let bytes = std::fs::read(storage.resolve_checked(&book.rel_path)?)?;
-        Ok(read_epub_toc(&bytes))
+        let publication = PublicationArchive::parse(Arc::from(bytes))
+            .map_err(|error| AppError::Other(error.to_string()))?;
+        Ok(publication.description().contents.clone())
     })
     .await
 }

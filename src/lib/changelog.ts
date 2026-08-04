@@ -19,6 +19,29 @@ export interface Release {
 /** Newest first. Add a new entry at the top each release. */
 export const CHANGELOG: Release[] = [
   {
+    version: "0.5.0",
+    date: "2026-08-03",
+    title: "Reading with company",
+    notes: [
+      {
+        kind: "new",
+        text: "Discord can now show friends what you are reading, including the chapter, page, progress, and time spent in the current session.",
+      },
+      {
+        kind: "fixed",
+        text: "Books now reopen at their saved position instead of starting from the beginning.",
+      },
+      {
+        kind: "fixed",
+        text: "Highlight saves, note edits, removals, and restores now finish in order, so quick changes no longer overwrite one another.",
+      },
+      {
+        kind: "improved",
+        text: "App and reader preferences now stay together and recover more safely when you restore a library copy.",
+      },
+    ],
+  },
+  {
     version: "0.4.2",
     date: "2026-08-02",
     title: "Highlights that hold",

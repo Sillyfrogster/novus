@@ -13,6 +13,7 @@ use uuid::Uuid;
 use super::archive::{LoadedSection, PublicationArchive, PublicationDescription, PublicationError};
 use super::path::decode_protocol_path;
 use crate::error::{AppError, AppResult};
+use crate::lock::{read_recovering, write_recovering};
 use crate::Novus;
 
 const MAX_OPEN_PUBLICATIONS: usize = 8;
@@ -52,7 +53,7 @@ impl PublicationRegistry {
         saved_locator: Option<String>,
     ) -> OpenedPublication {
         let publication = archive.description().clone();
-        let mut state = self.shared.write().expect("publication registry poisoned");
+        let mut state = write_recovering(&self.shared);
         let session = loop {
             let candidate = Uuid::new_v4();
             if !state.sessions.contains_key(&candidate) {
@@ -78,7 +79,7 @@ impl PublicationRegistry {
     }
 
     fn get(&self, owner: &str, session: Uuid) -> Option<Arc<PublicationArchive>> {
-        let state = self.shared.read().ok()?;
+        let state = read_recovering(&self.shared);
         let publication = state.sessions.get(&session)?;
         (publication.owner == owner).then(|| publication.archive.clone())
     }
@@ -87,9 +88,7 @@ impl PublicationRegistry {
         let Ok(session) = canonical_session(session) else {
             return;
         };
-        let Ok(mut state) = self.shared.write() else {
-            return;
-        };
+        let mut state = write_recovering(&self.shared);
         if state
             .sessions
             .get(&session)
@@ -103,9 +102,7 @@ impl PublicationRegistry {
     }
 
     pub(crate) fn close_owner(&self, owner: &str) {
-        let Ok(mut state) = self.shared.write() else {
-            return;
-        };
+        let mut state = write_recovering(&self.shared);
         state
             .sessions
             .retain(|_, publication| publication.owner != owner);
@@ -136,7 +133,7 @@ pub(crate) async fn publication_open(
             return Err(public_error(OPEN_ERROR));
         }
         let bytes = {
-            let _content = content_gate.read().map_err(|_| public_error(OPEN_ERROR))?;
+            let _content = read_recovering(&content_gate);
             let path = storage
                 .resolve_checked(&book.rel_path)
                 .map_err(|_| public_error(OPEN_ERROR))?;

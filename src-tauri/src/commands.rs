@@ -15,6 +15,7 @@ use crate::backup::{
 use crate::db::{now_seconds, Book, Collection, Db, Highlight, InsightsData};
 use crate::error::{AppError, AppResult};
 use crate::import::{import_paths, ImportSummary};
+use crate::lock::{read_recovering, write_recovering};
 use crate::publication::{ContentsItem, PublicationArchive};
 use crate::storage::Storage;
 use crate::{Novus, ZoomGuard};
@@ -53,7 +54,7 @@ pub async fn create_library_backup(
     run_blocking(
         "Novus could not finish saving the library copy",
         move || {
-            let _content = gate.write().expect("content gate poisoned");
+            let _content = write_recovering(&gate);
             create_backup(&storage, &db, Path::new(&path), &preferences)
         },
     )
@@ -70,7 +71,7 @@ pub async fn prepare_library_restore(
     run_blocking(
         "Novus could not finish checking the library copy",
         move || {
-            let _content = gate.write().expect("content gate poisoned");
+            let _content = write_recovering(&gate);
             prepare_restore(&storage, Path::new(&path))
         },
     )
@@ -79,7 +80,7 @@ pub async fn prepare_library_restore(
 
 #[tauri::command]
 pub fn commit_library_restore(state: State<'_, Novus>) -> AppResult<()> {
-    let _content = state.content_gate.write().expect("content gate poisoned");
+    let _content = write_recovering(&state.content_gate);
     commit_restore(&state.storage)
 }
 
@@ -88,7 +89,7 @@ pub async fn cancel_library_restore(state: State<'_, Novus>) -> AppResult<()> {
     let storage = state.storage.clone();
     let gate = state.content_gate.clone();
     run_blocking("Novus could not close the restore safely", move || {
-        let _content = gate.write().expect("content gate poisoned");
+        let _content = write_recovering(&gate);
         cancel_restore(&storage)
     })
     .await
@@ -96,7 +97,7 @@ pub async fn cancel_library_restore(state: State<'_, Novus>) -> AppResult<()> {
 
 #[tauri::command]
 pub fn library_restore_status(state: State<'_, Novus>) -> AppResult<Option<RestoreStatus>> {
-    let _content = state.content_gate.read().expect("content gate poisoned");
+    let _content = read_recovering(&state.content_gate);
     restore_status(&state.storage)
 }
 
@@ -105,7 +106,7 @@ pub async fn finish_library_restore(state: State<'_, Novus>) -> AppResult<()> {
     let storage = state.storage.clone();
     let gate = state.content_gate.clone();
     run_blocking("Novus could not remove the recovery copy", move || {
-        let _content = gate.write().expect("content gate poisoned");
+        let _content = write_recovering(&gate);
         finish_restore(&storage)
     })
     .await
@@ -113,7 +114,7 @@ pub async fn finish_library_restore(state: State<'_, Novus>) -> AppResult<()> {
 
 #[tauri::command]
 pub fn rollback_library_restore(state: State<'_, Novus>) -> AppResult<()> {
-    let _content = state.content_gate.write().expect("content gate poisoned");
+    let _content = write_recovering(&state.content_gate);
     request_restore_rollback(&state.storage)
 }
 
@@ -124,7 +125,7 @@ pub async fn import_books(state: State<'_, Novus>, paths: Vec<String>) -> AppRes
     let db = state.db.clone();
     let gate = state.content_gate.clone();
     run_blocking("Novus could not finish importing these books", move || {
-        let _content = gate.write().expect("content gate poisoned");
+        let _content = write_recovering(&gate);
         Ok(import_paths(&storage, &db, paths))
     })
     .await
@@ -147,7 +148,7 @@ pub async fn book_toc(state: State<'_, Novus>, id: String) -> AppResult<Vec<Cont
     let db = state.db.clone();
     let gate = state.content_gate.clone();
     run_blocking("Novus could not read this book's contents", move || {
-        let _content = gate.read().expect("content gate poisoned");
+        let _content = read_recovering(&gate);
         let Some(book) = db.get_book(&id)? else {
             return Ok(Vec::new());
         };
@@ -358,7 +359,7 @@ pub async fn remove_book(state: State<'_, Novus>, id: String) -> AppResult<()> {
     let db = state.db.clone();
     let gate = state.content_gate.clone();
     run_blocking("Novus could not remove this book", move || {
-        let _content = gate.write().expect("content gate poisoned");
+        let _content = write_recovering(&gate);
         remove_book_files(&storage, &db, &id)
     })
     .await

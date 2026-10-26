@@ -7,6 +7,7 @@ use rusqlite::{Connection, DatabaseName, OpenFlags};
 use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
+use crate::lock::lock_recovering;
 
 pub const SCHEMA_VERSION: i64 = 6;
 
@@ -148,10 +149,7 @@ impl Db {
             conn: Mutex::new(conn),
         };
         db.migrate(remove_legacy_voice_data)?;
-        db.conn
-            .lock()
-            .expect("db mutex poisoned")
-            .set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
+        lock_recovering(&db.conn).set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
         Ok(db)
     }
 
@@ -160,7 +158,7 @@ impl Db {
     where
         F: FnOnce() -> AppResult<()>,
     {
-        let mut conn = self.conn.lock().expect("db mutex poisoned");
+        let mut conn = lock_recovering(&self.conn);
         let transaction = conn.transaction()?;
         let version: i64 = transaction.query_row("PRAGMA user_version", [], |r| r.get(0))?;
 
@@ -265,7 +263,7 @@ impl Db {
     }
 
     pub fn backup_to(&self, path: &Path) -> AppResult<()> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         conn.backup(DatabaseName::Main, path, None)?;
         Ok(())
     }
@@ -277,7 +275,7 @@ impl Db {
 
     /// All books, newest first, with reading progress joined in.
     pub fn list_books(&self) -> AppResult<Vec<Book>> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         let mut stmt = conn.prepare(
             "SELECT b.id, b.title, b.author, b.format, b.rel_path, b.cover_path,
                     b.page_count, b.language, b.file_size, b.added_at,
@@ -291,7 +289,7 @@ impl Db {
     }
 
     pub fn book_exists(&self, id: &str) -> AppResult<bool> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         let exists = conn
             .query_row("SELECT 1 FROM books WHERE id = ?1", [id], |_| Ok(()))
             .is_ok();
@@ -299,7 +297,7 @@ impl Db {
     }
 
     pub fn insert_book(&self, b: &Book) -> AppResult<()> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         conn.execute(
             "INSERT INTO books
                 (id, title, author, format, rel_path, cover_path, page_count, language, file_size, added_at, description)
@@ -313,7 +311,7 @@ impl Db {
     }
 
     pub fn get_book(&self, id: &str) -> AppResult<Option<Book>> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         let book = conn
             .query_row(
                 "SELECT b.id, b.title, b.author, b.format, b.rel_path, b.cover_path,
@@ -334,13 +332,13 @@ impl Db {
     }
 
     pub fn delete_book(&self, id: &str) -> AppResult<()> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         conn.execute("DELETE FROM books WHERE id = ?1", [id])?;
         Ok(())
     }
 
     pub fn reading_locator(&self, book_id: &str) -> AppResult<Option<String>> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         let locator = conn
             .query_row(
                 "SELECT locator FROM reading_state WHERE book_id = ?1",
@@ -357,7 +355,7 @@ impl Db {
     // collections
 
     pub fn list_collections(&self) -> AppResult<Vec<Collection>> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         let mut stmt =
             conn.prepare("SELECT id, name FROM collections ORDER BY name COLLATE NOCASE")?;
         let metas = stmt
@@ -378,7 +376,7 @@ impl Db {
 
     pub fn create_collection(&self, name: &str) -> AppResult<Collection> {
         let now = now_seconds();
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         conn.execute(
             "INSERT INTO collections (name, created_at) VALUES (?1, ?2)",
             rusqlite::params![name, now],
@@ -392,7 +390,7 @@ impl Db {
     }
 
     pub fn delete_collection(&self, id: i64) -> AppResult<()> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         conn.execute("DELETE FROM collections WHERE id = ?1", [id])?;
         Ok(())
     }
@@ -403,7 +401,7 @@ impl Db {
         book_id: &str,
         member: bool,
     ) -> AppResult<()> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         if member {
             conn.execute(
                 "INSERT OR IGNORE INTO collection_books (collection_id, book_id) VALUES (?1, ?2)",
@@ -435,7 +433,7 @@ impl Db {
         end_fraction: f64,
     ) -> AppResult<()> {
         let seconds = (ended_at - started_at).max(0);
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         conn.execute(
             "INSERT INTO reading_sessions
                 (uuid, book_id, started_at, ended_at, seconds, pages,
@@ -470,7 +468,7 @@ impl Db {
         const MIN_RATE_SIGNAL_S: i64 = 600;
         const MIN_RATE_DELTA: f64 = 0.005;
 
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         let month_ago = now_seconds() - 30 * 86_400;
 
         let (finished_count, reading_count, unread_count): (i64, i64, i64) = conn.query_row(
@@ -652,7 +650,7 @@ impl Db {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         conn.execute(
             "INSERT INTO reading_state (book_id, locator, progress, last_read_at)
              VALUES (?1, ?2, ?3, ?4)
@@ -669,7 +667,7 @@ impl Db {
 
     // all highlights for a book, ordered by their position in the book.
     pub fn list_highlights(&self, book_id: &str) -> AppResult<Vec<Highlight>> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         let mut stmt = conn.prepare(
             "SELECT id, book_id, cfi, text, chapter_label, chapter_href,
                     section_index, location, color, note, created_at
@@ -696,7 +694,7 @@ impl Db {
     }
 
     pub fn add_highlight(&self, h: &Highlight) -> AppResult<()> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         conn.execute(
             "INSERT INTO highlights
                 (id, book_id, cfi, text, chapter_label, chapter_href,
@@ -721,7 +719,7 @@ impl Db {
 
     /// Set (or clear, with `None`) a highlight's note.
     pub fn set_highlight_note(&self, id: &str, note: Option<String>) -> AppResult<()> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         conn.execute(
             "UPDATE highlights SET note = ?1 WHERE id = ?2",
             rusqlite::params![note, id],
@@ -730,7 +728,7 @@ impl Db {
     }
 
     pub fn delete_highlight(&self, id: &str) -> AppResult<()> {
-        let conn = self.conn.lock().expect("db mutex poisoned");
+        let conn = lock_recovering(&self.conn);
         conn.execute("DELETE FROM highlights WHERE id = ?1", [id])?;
         Ok(())
     }
@@ -1295,5 +1293,41 @@ mod tests {
             .find(|book| book.id == "book-1")
             .unwrap();
         assert_eq!(book.progress, 0.42);
+    }
+
+    #[test]
+    fn a_poisoned_db_lock_does_not_fail_later_reads() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("novus.db");
+        let db = Db::open(&path, || Ok(())).unwrap();
+        db.insert_book(&Book {
+            id: "book-1".to_string(),
+            title: "Title".to_string(),
+            author: "Author".to_string(),
+            format: "epub".to_string(),
+            rel_path: "books/book-1.epub".to_string(),
+            cover_path: None,
+            page_count: None,
+            language: None,
+            description: None,
+            file_size: 4,
+            added_at: 1,
+            progress: 0.0,
+            last_read_at: None,
+        })
+        .unwrap();
+
+        // Panic while holding the connection lock, so the mutex is left poisoned.
+        std::thread::scope(|scope| {
+            let handle = scope.spawn(|| {
+                let _guard = db.conn.lock().unwrap();
+                panic!("simulated panic while the connection lock is held");
+            });
+            assert!(handle.join().is_err());
+        });
+
+        let books = db.list_books().unwrap();
+        assert_eq!(books.len(), 1);
+        assert_eq!(books[0].id, "book-1");
     }
 }

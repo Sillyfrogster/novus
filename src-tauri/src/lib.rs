@@ -6,6 +6,7 @@ mod db;
 mod discord;
 mod error;
 mod import;
+mod lock;
 mod publication;
 mod storage;
 

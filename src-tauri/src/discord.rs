@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 use tauri::State;
@@ -11,6 +11,17 @@ impl Default for DiscordPresence {
     fn default() -> Self {
         Self(Mutex::new(None))
     }
+}
+
+/// Locks the presence client. After a panic, drops the stored client so the next call reconnects.
+fn lock_presence_resetting(
+    presence: &Mutex<Option<DiscordIpcClient>>,
+) -> MutexGuard<'_, Option<DiscordIpcClient>> {
+    presence.lock().unwrap_or_else(|poisoned: PoisonError<_>| {
+        let mut guard = poisoned.into_inner();
+        *guard = None;
+        guard
+    })
 }
 
 #[tauri::command]
@@ -44,7 +55,7 @@ pub fn set_discord_presence(
                 .large_text("Novus"),
         );
 
-    let mut client = presence.0.lock().expect("Discord presence lock poisoned");
+    let mut client = lock_presence_resetting(&presence.0);
     if client.is_none() {
         let mut connection = DiscordIpcClient::new(CLIENT_ID);
         if connection.connect().is_err() {
@@ -64,12 +75,7 @@ pub fn set_discord_presence(
 
 #[tauri::command]
 pub fn clear_discord_presence(presence: State<'_, DiscordPresence>) {
-    if let Some(mut client) = presence
-        .0
-        .lock()
-        .expect("Discord presence lock poisoned")
-        .take()
-    {
+    if let Some(mut client) = lock_presence_resetting(&presence.0).take() {
         let _ = client.clear_activity();
         let _ = client.close();
     }

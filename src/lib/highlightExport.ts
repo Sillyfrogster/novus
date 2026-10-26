@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
 
-import { writeFile } from "./ipc";
+import { exportFile } from "./ipc";
 import { isDesktop } from "./platform";
 import type { Book, Highlight } from "./types";
 
@@ -91,22 +90,20 @@ export async function saveTextFile(
   ext: string,
 ): Promise<boolean> {
   if (!isDesktop) return false;
-  const path = await save({
-    defaultPath: defaultName,
-    filters: [{ name: filterName, extensions: [ext] }],
+  return exportFile({
+    defaultName,
+    filterName,
+    extensions: [ext],
+    contents: new TextEncoder().encode(content),
   });
-  if (!path) return false;
-  await writeFile(path, new TextEncoder().encode(content));
-  return true;
 }
 
 export async function saveImageFile(blob: Blob, defaultName: string): Promise<boolean> {
   if (!isDesktop) return false;
-  const path = await save({
-    defaultPath: defaultName,
-    filters: [{ name: "PNG image", extensions: ["png"] }],
+  return exportFile({
+    defaultName,
+    filterName: "PNG image",
+    extensions: ["png"],
+    contents: new Uint8Array(await blob.arrayBuffer()),
   });
-  if (!path) return false;
-  await writeFile(path, new Uint8Array(await blob.arrayBuffer()));
-  return true;
 }

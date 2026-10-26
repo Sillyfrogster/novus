@@ -125,7 +125,7 @@ pub fn run() {
             commands::set_highlight_note,
             commands::delete_highlight,
             #[cfg(desktop)]
-            commands::write_file,
+            commands::export_file,
             #[cfg(desktop)]
             commands::copy_highlight_image,
             #[cfg(desktop)]

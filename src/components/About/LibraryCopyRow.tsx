@@ -1,4 +1,4 @@
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { ArchiveRestore, BookCopy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -41,31 +41,16 @@ export function LibraryCopyRow() {
   }, []);
 
   async function backUp() {
-    let destination: string | null;
-    try {
-      destination = await save({
-        defaultPath: `Novus Library ${today()}.novus-backup`,
-        filters: [{ name: "Novus library copy", extensions: ["novus-backup"] }],
-      });
-    } catch {
-      if (!mounted.current) return;
-      setNotice({
-        tone: "error",
-        text: "Novus could not open the save dialog. Please try again.",
-      });
-      return;
-    }
-    if (!destination || !mounted.current) return;
-
     setActivity("backingUp");
     setNotice({ tone: "quiet", text: "Saving your library copy…" });
     try {
-      await libraryCopy.save(destination);
+      // The Rust side opens the save dialog. A null result means the user cancelled.
+      const summary = await libraryCopy.save();
       if (!mounted.current) {
-        showBackgroundNotice("Your library copy is saved.", "success", false);
+        if (summary) showBackgroundNotice("Your library copy is saved.", "success", false);
         return;
       }
-      setNotice({ tone: "quiet", text: "Your library copy is saved." });
+      setNotice(summary ? { tone: "quiet", text: "Your library copy is saved." } : null);
     } catch {
       if (!mounted.current) {
         showBackgroundNotice(
@@ -214,14 +199,6 @@ export function LibraryCopyRow() {
       )}
     </>
   );
-}
-
-function today(): string {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function fileName(path: string): string {

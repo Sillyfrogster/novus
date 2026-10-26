@@ -132,6 +132,17 @@ export function deleteHighlight(id: string): Promise<void> {
   return invoke<void>("delete_highlight", { id });
 }
 
-export function writeFile(path: string, contents: Uint8Array): Promise<void> {
-  return invoke<void>("write_file", { path, contents: Array.from(contents) });
+/** Opens the native save dialog in Rust. Resolves false when the user cancels. */
+export function exportFile(options: {
+  defaultName: string;
+  filterName: string;
+  extensions: string[];
+  contents: Uint8Array;
+}): Promise<boolean> {
+  return invoke<boolean>("export_file", {
+    defaultName: options.defaultName,
+    filterName: options.filterName,
+    extensions: options.extensions,
+    contents: Array.from(options.contents),
+  });
 }

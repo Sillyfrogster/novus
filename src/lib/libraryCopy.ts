@@ -31,7 +31,7 @@ interface RestoreStatus extends RestoreSummary {
 }
 
 interface LibraryCopyBackend {
-  save: (path: string, preferences: PreferencesSnapshot) => Promise<BackupSummary>;
+  save: (preferences: PreferencesSnapshot) => Promise<BackupSummary | null>;
   prepare: (path: string) => Promise<RestoreSummary>;
   commit: () => Promise<void>;
   cancel: () => Promise<void>;
@@ -50,8 +50,7 @@ type OpenLibrary = () => Promise<boolean>;
 type PreferenceRecovery = "missing" | "restored" | "failed";
 
 const tauriBackend: LibraryCopyBackend = {
-  save: (path, preferences) =>
-    invoke<BackupSummary>("create_library_backup", { path, preferences }),
+  save: (preferences) => invoke<BackupSummary | null>("create_library_backup", { preferences }),
   prepare: (path) => invoke<RestoreSummary>("prepare_library_restore", { path }),
   commit: () => invoke<void>("commit_library_restore"),
   cancel: () => invoke<void>("cancel_library_restore"),
@@ -199,7 +198,7 @@ export function createLibraryCopy(
   };
 
   return {
-    save: (path: string) => backend.save(path, currentPreferences()),
+    save: () => backend.save(currentPreferences()),
     prepare: (path: string) => backend.prepare(path),
     cancel: () => backend.cancel(),
     install: async (): Promise<boolean> => {

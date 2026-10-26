@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { createLibraryCopy } from "../src/lib/libraryCopy";
+import { currentPreferences } from "../src/lib/preferences";
 
 type LibraryCopyBackend = Parameters<typeof createLibraryCopy>[0];
 
@@ -123,5 +124,31 @@ describe("library copy restore confirmation", () => {
 
     expect(startup).toEqual({ ready: true });
     expect(opened).toBe(1);
+  });
+});
+
+describe("library copy save", () => {
+  test("save passes the current preferences and no destination path", async () => {
+    const calls: unknown[][] = [];
+    const copy = createLibraryCopy(
+      fakeBackend({
+        save: async (...args) => {
+          calls.push(args);
+          return { createdAt: 1, bookCount: 0, fileCount: 0, byteCount: 0 };
+        },
+      }),
+      () => undefined,
+    );
+
+    await copy.save();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual([currentPreferences()]);
+  });
+
+  test("save resolves to null when the user cancels the Rust dialog", async () => {
+    const copy = createLibraryCopy(fakeBackend({ save: async () => null }), () => undefined);
+
+    await expect(copy.save()).resolves.toBeNull();
   });
 });

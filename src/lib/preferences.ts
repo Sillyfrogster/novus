@@ -307,9 +307,11 @@ export function currentPreferences(): PreferencesSnapshot {
   return snapshotFrom(usePreferences.getState());
 }
 
+/** Throws when the write fails and leaves state unchanged. Restore and rollback rely on that throw. */
 export function replacePreferences(value: unknown): PreferencesSnapshot {
   const preferences = decodePreferences(value);
-  commit(preferences);
+  persistPreferences(preferences);
+  usePreferences.setState(preferences);
   return clonePreferences(preferences);
 }
 

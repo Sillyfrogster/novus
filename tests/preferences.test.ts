@@ -160,6 +160,20 @@ function withFailingWrites<T>(run: () => T): T {
   }
 }
 
+/** Fails only the settings write, so the recovery record can still be saved. */
+function withFailingPreferenceWrites<T>(run: () => T): T {
+  const write = storage.setItem;
+  storage.setItem = function (this: Storage, key: string, value: string) {
+    if (key === "novus.preferences") throw new Error("quota exceeded");
+    return write.call(storage, key, value);
+  };
+  try {
+    return run();
+  } finally {
+    storage.setItem = write;
+  }
+}
+
 describe("failed preference saves", () => {
   afterEach(() => {
     registerErrorSink(() => undefined);
@@ -205,3 +219,33 @@ function installedStatus(
     error: null,
   };
 }
+
+describe("restore and rollback writes", () => {
+  test("applyRestoredPreferences throws and leaves the restore unapplied when the settings write fails", () => {
+    storage.clear();
+    preferences.replacePreferences({ profileName: "Original library" });
+
+    withFailingPreferenceWrites(() =>
+      expect(() =>
+        preferences.applyRestoredPreferences(456, { profileName: "Restored library" }),
+      ).toThrow("quota exceeded"),
+    );
+
+    expect(preferences.restoredPreferencesApplied(456)).toBe(false);
+    expect(preferences.currentPreferences().profileName).toBe("Original library");
+    expect(preferences.preferenceRecoverySaved()).toBe(true);
+  });
+
+  test("recoverPreviousPreferences throws and keeps the recovery record when the settings write fails", () => {
+    storage.clear();
+    preferences.replacePreferences({ profileName: "Original library" });
+    preferences.applyRestoredPreferences(789, { profileName: "Restored library" });
+
+    withFailingPreferenceWrites(() =>
+      expect(() => preferences.recoverPreviousPreferences()).toThrow("quota exceeded"),
+    );
+
+    expect(preferences.preferenceRecoverySaved()).toBe(true);
+    expect(preferences.currentPreferences().profileName).toBe("Restored library");
+  });
+});

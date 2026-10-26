@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 
 class MemoryStorage implements Storage {
   readonly #values = new Map<string, string>();
@@ -34,26 +34,36 @@ Object.defineProperty(globalThis, "localStorage", {
   value: storage,
 });
 
-storage.setItem("novus.appTheme", "light");
-storage.setItem("novus.profileName", "Night reader");
-storage.setItem(
-  "novus.readerSettings:v1",
-  JSON.stringify({ fontSize: 22, layout: "scroll", brightness: "bright", measure: 4_000 }),
-);
-storage.setItem(
-  "novus.highlightColors:v1",
-  JSON.stringify({ rose: { label: "Quote", color: "#ABCDEF" } }),
-);
-storage.setItem("novus.continueShelfOpen", "0");
-storage.setItem("novus.lastSeenVersion", "0.4.0");
-
 const preferences = await import("../src/lib/preferences");
 const { createLibraryCopy } = await import("../src/lib/libraryCopy");
 const { registerErrorSink } = await import("../src/lib/errorReport");
-const migrated = preferences.currentPreferences();
+
+beforeEach(() => {
+  storage.clear();
+  preferences.reloadPreferences();
+});
+
+function seedLegacyValues(): void {
+  storage.setItem("novus.appTheme", "light");
+  storage.setItem("novus.profileName", "Night reader");
+  storage.setItem(
+    "novus.readerSettings:v1",
+    JSON.stringify({ fontSize: 22, layout: "scroll", brightness: "bright", measure: 4_000 }),
+  );
+  storage.setItem(
+    "novus.highlightColors:v1",
+    JSON.stringify({ rose: { label: "Quote", color: "#ABCDEF" } }),
+  );
+  storage.setItem("novus.continueShelfOpen", "0");
+  storage.setItem("novus.lastSeenVersion", "0.4.0");
+}
 
 describe("durable preferences", () => {
   test("migrates supported legacy values and repairs malformed values", () => {
+    seedLegacyValues();
+    preferences.reloadPreferences();
+    const migrated = preferences.currentPreferences();
+
     expect(migrated).toMatchObject({
       appTheme: "light",
       profileName: "Night reader",

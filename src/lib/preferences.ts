@@ -241,6 +241,11 @@ function snapshotFrom(state: PreferencesSnapshot): PreferencesSnapshot {
 
 export const usePreferences = create<PreferencesSnapshot>(() => loadPreferences());
 
+/** Test seam only: the app never calls this. Re-reads durable settings the way module load does. */
+export function reloadPreferences(): void {
+  usePreferences.setState(loadPreferences());
+}
+
 const SETTINGS_SAVE_FAILED = "Couldn't save your settings. They'll reset when Novus restarts.";
 
 /** Set state before writing, so a failed write keeps the setting visible this session. */

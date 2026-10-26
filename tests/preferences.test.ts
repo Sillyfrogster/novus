@@ -230,6 +230,69 @@ function installedStatus(
   };
 }
 
+type LibraryCopyBackend = Parameters<typeof createLibraryCopy>[0];
+type BackendStatus = Awaited<ReturnType<LibraryCopyBackend["status"]>>;
+
+/** Like withFailingPreferenceWrites, but for an async callback. */
+async function withFailingPreferenceWritesAsync<T>(run: () => Promise<T>): Promise<T> {
+  const write = storage.setItem;
+  storage.setItem = function (this: Storage, key: string, value: string) {
+    if (key === "novus.preferences") throw new Error("quota exceeded");
+    return write.call(storage, key, value);
+  };
+  try {
+    return await run();
+  } finally {
+    storage.setItem = write;
+  }
+}
+
+function failedStatus(
+  backupCreatedAt: number,
+  restored: ReturnType<typeof preferences.currentPreferences>,
+) {
+  return {
+    state: "failed" as const,
+    backupCreatedAt,
+    bookCount: 1,
+    fileCount: 2,
+    preferences: restored,
+    error: null,
+  };
+}
+
+interface RestoreBackendState {
+  status: BackendStatus;
+  calls: string[];
+}
+
+/** A backend whose status is driven by state; cancel and finish clear it, as the Rust side does. */
+function restoreBackend(state: RestoreBackendState): LibraryCopyBackend {
+  return {
+    save: async () => ({ createdAt: 0, bookCount: 0, fileCount: 0, byteCount: 0 }),
+    prepare: async () => {
+      state.calls.push("prepare");
+      return { backupCreatedAt: 0, bookCount: 0, fileCount: 0 };
+    },
+    commit: async () => undefined,
+    cancel: async () => {
+      state.calls.push("cancel");
+      state.status = null;
+    },
+    status: async () => state.status,
+    finish: async () => {
+      state.calls.push("finish");
+      state.status = null;
+    },
+    rollback: async () => {
+      state.calls.push("rollback");
+    },
+    relaunch: async () => {
+      state.calls.push("relaunch");
+    },
+  };
+}
+
 describe("restore and rollback writes", () => {
   test("applyRestoredPreferences throws and leaves the restore unapplied when the settings write fails", () => {
     storage.clear();
@@ -257,5 +320,43 @@ describe("restore and rollback writes", () => {
 
     expect(preferences.preferenceRecoverySaved()).toBe(true);
     expect(preferences.currentPreferences().profileName).toBe("Restored library");
+  });
+});
+
+describe("resume after a failed settings write", () => {
+  afterEach(() => {
+    // The record must not leak to other test files that share the global localStorage in one bun process.
+    storage.clear();
+    preferences.reloadPreferences();
+  });
+
+  test("a failed revert keeps its record through a later start with no restore journal until a settings write succeeds", async () => {
+    preferences.replacePreferences({ profileName: "Original library" });
+    preferences.applyRestoredPreferences(456, { profileName: "Restored library" });
+    const state: RestoreBackendState = {
+      status: failedStatus(456, preferences.currentPreferences()),
+      calls: [],
+    };
+    const copy = createLibraryCopy(restoreBackend(state), () => undefined);
+    const sameError =
+      "Novus kept your current library, but could not restore its previous preferences.";
+
+    // Start 1: the failed branch reverts, the settings write fails, and the journal is cancelled.
+    const first = await withFailingPreferenceWritesAsync(() => copy.resume(async () => true));
+    expect(first.ready).toBe(true);
+    expect(first.error).toBe(sameError);
+    expect(state.calls).toContain("cancel");
+
+    // Start 2: no journal is left, and the settings write still fails.
+    const second = await withFailingPreferenceWritesAsync(() => copy.resume(async () => true));
+    expect(preferences.preferenceRecoverySaved()).toBe(true);
+    expect(second.error).toBe(sameError);
+
+    // Start 3: the settings write works, so the previous preferences come back and the record clears.
+    const third = await copy.resume(async () => true);
+    expect(preferences.currentPreferences().profileName).toBe("Original library");
+    expect(preferences.preferenceRecoverySaved()).toBe(false);
+    expect(third.ready).toBe(true);
+    expect(third.error).toBeUndefined();
   });
 });

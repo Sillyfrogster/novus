@@ -92,6 +92,9 @@ interface RecoveryRecord {
   backupCreatedAt: number;
   previous: PreferencesSnapshot;
   applied: boolean;
+  // While true, the previous settings exist only in this record, so no start may clear it
+  // and no restore may overwrite it.
+  revertFailed: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -339,6 +342,7 @@ function readRecovery(): RecoveryRecord | null {
     backupCreatedAt: value.backupCreatedAt,
     previous: decodePreferences(value.previous),
     applied: value.applied,
+    revertFailed: value.revertFailed === true,
   };
 }
 
@@ -348,12 +352,18 @@ function writeRecovery(recovery: RecoveryRecord): void {
 
 export function applyRestoredPreferences(createdAt: number, value: unknown): void {
   let recovery = readRecovery();
+  // Checked before the overwrite below: that branch would replace the only copy of the
+  // previous settings, for any backup.
+  if (recovery?.revertFailed) {
+    throw new Error("Previous preferences are still waiting to be restored");
+  }
   if (!recovery || recovery.backupCreatedAt !== createdAt) {
     recovery = {
       version: VERSION,
       backupCreatedAt: createdAt,
       previous: currentPreferences(),
       applied: false,
+      revertFailed: false,
     };
     writeRecovery(recovery);
   }
@@ -371,12 +381,24 @@ export function restoredPreferencesApplied(createdAt: number): boolean {
 export function recoverPreviousPreferences(): boolean {
   const recovery = readRecovery();
   if (!recovery) return false;
-  replacePreferences(recovery.previous);
+  try {
+    replacePreferences(recovery.previous);
+  } catch (error) {
+    // The flag write replaces the stored false with true, a shorter value, so it can succeed
+    // when the settings write failed for lack of space.
+    writeRecovery({ ...recovery, revertFailed: true });
+    throw error;
+  }
   return true;
 }
 
 export function preferenceRecoverySaved(): boolean {
   return readRecovery() !== null;
+}
+
+/** True while a revert still owes the user their previous settings. */
+export function preferenceRecoveryUnresolved(): boolean {
+  return readRecovery()?.revertFailed === true;
 }
 
 export function clearPreferenceRecovery(): void {

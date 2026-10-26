@@ -5,6 +5,7 @@ import {
   clearPreferenceRecovery,
   currentPreferences,
   preferenceRecoverySaved,
+  preferenceRecoveryUnresolved,
   recoverPreviousPreferences,
   restoredPreferencesApplied,
   type PreferencesSnapshot,
@@ -48,6 +49,9 @@ export interface LibraryStartup {
 
 type OpenLibrary = () => Promise<boolean>;
 type PreferenceRecovery = "missing" | "restored" | "failed";
+
+const PREFERENCES_NOT_RESTORED =
+  "Novus kept your current library, but could not restore its previous preferences.";
 
 const tauriBackend: LibraryCopyBackend = {
   save: (preferences) => invoke<BackupSummary | null>("create_library_backup", { preferences }),
@@ -115,10 +119,19 @@ export function createLibraryCopy(
     }
 
     if (!restore) {
-      clearPreferenceRecovery();
-      return (await opens(openLibrary))
-        ? { ready: true }
-        : blocked("Novus could not finish opening your library. Restart Novus and try again.");
+      // A marked record is the only copy of the previous settings, so only a successful revert
+      // may clear it. A record without the mark is a finished restore whose clear did not run.
+      let preferenceError: string | undefined;
+      if (preferenceRecoveryUnresolved()) {
+        if (recoverPreferences() === "failed") preferenceError = PREFERENCES_NOT_RESTORED;
+        else clearPreferenceRecovery();
+      } else {
+        clearPreferenceRecovery();
+      }
+      if (!(await opens(openLibrary))) {
+        return blocked("Novus could not finish opening your library. Restart Novus and try again.");
+      }
+      return preferenceError ? { ready: true, error: preferenceError } : { ready: true };
     }
 
     if (restore.state === "installed") {
@@ -173,7 +186,7 @@ export function createLibraryCopy(
         ready: cancelled,
         error:
           preferencesWereApplied && preferences !== "restored"
-            ? "Novus kept your current library, but could not restore its previous preferences."
+            ? PREFERENCES_NOT_RESTORED
             : cancelled
               ? "Novus kept your current library because the restored copy could not be verified."
               : "Novus kept your current library, but could not finish cleaning up the failed restore.",

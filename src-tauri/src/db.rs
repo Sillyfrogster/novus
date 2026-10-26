@@ -1258,4 +1258,42 @@ mod tests {
         drop(connection);
         assert!(Db::validate_file(&missing_index).is_err());
     }
+
+    #[test]
+    fn behavior_reading_position_round_trip() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("novus.db");
+        let cfi = "epubcfi(/6/4[chap01]!/4/2/1:0)";
+        {
+            let db = Db::open(&path, || Ok(())).unwrap();
+            db.insert_book(&Book {
+                id: "book-1".to_string(),
+                title: "Title".to_string(),
+                author: "Author".to_string(),
+                format: "epub".to_string(),
+                rel_path: "books/book-1.epub".to_string(),
+                cover_path: None,
+                page_count: None,
+                language: None,
+                description: None,
+                file_size: 4,
+                added_at: 1,
+                progress: 0.0,
+                last_read_at: None,
+            })
+            .unwrap();
+            db.save_reading_state("book-1", Some(cfi.to_string()), 0.42)
+                .unwrap();
+        }
+
+        let db = Db::open(&path, || Ok(())).unwrap();
+        assert_eq!(db.reading_locator("book-1").unwrap().as_deref(), Some(cfi));
+        let book = db
+            .list_books()
+            .unwrap()
+            .into_iter()
+            .find(|book| book.id == "book-1")
+            .unwrap();
+        assert_eq!(book.progress, 0.42);
+    }
 }

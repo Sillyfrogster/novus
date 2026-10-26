@@ -208,3 +208,75 @@ fn portable_cover_extension<'a>(extension: &'a str, data: &[u8]) -> &'a str {
         "img"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Cursor, Write};
+
+    use zip::write::SimpleFileOptions;
+    use zip::{CompressionMethod, ZipWriter};
+
+    use super::*;
+
+    /// A minimal EPUB that the archive parser accepts, with one chapter in the spine.
+    fn minimal_epub() -> Vec<u8> {
+        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+        let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+        let entries: [(&str, &[u8]); 4] = [
+            ("mimetype", b"application/epub+zip"),
+            (
+                "META-INF/container.xml",
+                br#"<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>"#,
+            ),
+            (
+                "OEBPS/content.opf",
+                br#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:identifier id="book-id">urn:uuid:00000000-0000-0000-0000-000000000001</dc:identifier>
+<dc:title>Minimal Book</dc:title>
+<dc:creator>Test Author</dc:creator>
+<dc:language>en</dc:language>
+</metadata>
+<manifest>
+<item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+</manifest>
+<spine><itemref idref="chapter"/></spine>
+</package>"#,
+            ),
+            (
+                "OEBPS/chapter.xhtml",
+                b"<html xmlns=\"http://www.w3.org/1999/xhtml\"><body><p>Chapter</p></body></html>",
+            ),
+        ];
+        for (path, body) in entries {
+            writer.start_file(path, stored).unwrap();
+            writer.write_all(body).unwrap();
+        }
+        writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn behavior_import_one_bad_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let storage = Storage::for_test(temp.path().join("library")).unwrap();
+        let db = Db::open(&storage.db_path(), || Ok(())).unwrap();
+        let good = temp.path().join("good.epub");
+        let bad = temp.path().join("bad.epub");
+        std::fs::write(&good, minimal_epub()).unwrap();
+        std::fs::write(&bad, b"this is plain text, not a zip archive").unwrap();
+        let bad_path = bad.to_string_lossy().into_owned();
+        let paths = vec![good.to_string_lossy().into_owned(), bad_path.clone()];
+
+        let summary = import_paths(&storage, &db, paths);
+
+        assert_eq!(summary.imported.len(), 1);
+        assert_eq!(summary.imported[0].title, "Minimal Book");
+        assert_eq!(summary.failed.len(), 1);
+        assert_eq!(summary.failed[0].path, bad_path);
+        assert_eq!(db.list_books().unwrap().len(), 1);
+    }
+}

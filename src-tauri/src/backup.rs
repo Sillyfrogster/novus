@@ -1390,6 +1390,42 @@ mod tests {
         assert!(restore_status(&storage).unwrap().is_none());
     }
 
+    // Prepare and cancel never install the restored library.
+    #[test]
+    fn behavior_restore_prepare_and_cancel_leave_library_unchanged() {
+        let (temp, storage, db) = create_test_library();
+        add_book(&storage, &db);
+        let backup_path = temp.path().join("library.novus-backup");
+        create_backup(&storage, &db, &backup_path, &preferences()).unwrap();
+        let id = digest_hex(Sha256::digest(b"book"));
+        let book_file = storage
+            .resolve_checked(&format!("books/{}/{id}.epub", &id[..2]))
+            .unwrap();
+
+        prepare_restore(&storage, &backup_path).unwrap();
+        assert_eq!(restore_status(&storage).unwrap().unwrap().state, "prepared");
+        assert_eq!(db.list_books().unwrap().len(), 1);
+        assert_eq!(std::fs::read(&book_file).unwrap(), b"book");
+
+        cancel_restore(&storage).unwrap();
+        assert!(restore_status(&storage).unwrap().is_none());
+        assert_eq!(db.list_books().unwrap().len(), 1);
+        assert_eq!(std::fs::read(&book_file).unwrap(), b"book");
+    }
+
+    // Commit must refuse when nothing was prepared, and must not leave restore state behind.
+    #[test]
+    fn behavior_restore_commit_requires_prepared_copy() {
+        let (_temp, storage, db) = create_test_library();
+        add_book(&storage, &db);
+
+        let result = commit_restore(&storage);
+
+        assert!(result.is_err());
+        assert!(restore_status(&storage).unwrap().is_none());
+        assert_eq!(db.list_books().unwrap().len(), 1);
+    }
+
     #[test]
     fn invalid_archive_is_rejected_without_changing_the_library() {
         let (temp, storage, db) = create_test_library();

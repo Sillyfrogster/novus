@@ -12,10 +12,11 @@ use crate::backup::{
     cancel_restore, commit_restore, create_backup, finish_restore, prepare_restore,
     request_restore_rollback, restore_status, BackupSummary, RestoreStatus, RestoreSummary,
 };
-use crate::db::{now_seconds, Book, Collection, Highlight, InsightsData};
+use crate::db::{now_seconds, Book, Collection, Db, Highlight, InsightsData};
 use crate::error::{AppError, AppResult};
 use crate::import::{import_paths, ImportSummary};
 use crate::publication::{ContentsItem, PublicationArchive};
+use crate::storage::Storage;
 use crate::{Novus, ZoomGuard};
 
 async fn run_blocking<T, F>(failure: &'static str, operation: F) -> AppResult<T>
@@ -358,19 +359,80 @@ pub async fn remove_book(state: State<'_, Novus>, id: String) -> AppResult<()> {
     let gate = state.content_gate.clone();
     run_blocking("Novus could not remove this book", move || {
         let _content = gate.write().expect("content gate poisoned");
-        let book = db.get_book(&id)?;
-        db.delete_book(&id)?;
-        if let Some(book) = book {
-            if let Ok(path) = storage.resolve_checked(&book.rel_path) {
-                let _ = std::fs::remove_file(path);
-            }
-            if let Some(cover) = &book.cover_path {
-                if let Ok(path) = storage.resolve_checked(cover) {
-                    let _ = std::fs::remove_file(path);
-                }
-            }
-        }
-        Ok(())
+        remove_book_files(&storage, &db, &id)
     })
     .await
+}
+
+/// Delete the book row, then best-effort remove its managed file and cover.
+/// Ignores file removal errors, so the row goes even if the file stays.
+fn remove_book_files(storage: &Storage, db: &Db, id: &str) -> AppResult<()> {
+    let book = db.get_book(id)?;
+    db.delete_book(id)?;
+    if let Some(book) = book {
+        if let Ok(path) = storage.resolve_checked(&book.rel_path) {
+            let _ = std::fs::remove_file(path);
+        }
+        if let Some(cover) = &book.cover_path {
+            if let Ok(path) = storage.resolve_checked(cover) {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A library with one book row whose managed file path is books/book-1.epub.
+    fn library_with_one_book() -> (tempfile::TempDir, Storage, Db) {
+        let temp = tempfile::tempdir().unwrap();
+        let storage = Storage::for_test(temp.path().join("library")).unwrap();
+        let db = Db::open(&storage.db_path(), || Ok(())).unwrap();
+        db.insert_book(&Book {
+            id: "book-1".to_string(),
+            title: "Title".to_string(),
+            author: "Author".to_string(),
+            format: "epub".to_string(),
+            rel_path: "books/book-1.epub".to_string(),
+            cover_path: None,
+            page_count: None,
+            language: None,
+            description: None,
+            file_size: 4,
+            added_at: 1,
+            progress: 0.0,
+            last_read_at: None,
+        })
+        .unwrap();
+        (temp, storage, db)
+    }
+
+    #[test]
+    fn behavior_remove_book_deletes_row_and_file() {
+        let (_temp, storage, db) = library_with_one_book();
+        let file = storage.resolve_checked("books/book-1.epub").unwrap();
+        std::fs::write(&file, b"book").unwrap();
+
+        remove_book_files(&storage, &db, "book-1").unwrap();
+
+        assert!(db.get_book("book-1").unwrap().is_none());
+        assert!(!file.exists());
+    }
+
+    // Flip these assertions once file removal failures are reported.
+    #[test]
+    fn behavior_remove_book_file_failure_pins_data_07() {
+        let (_temp, storage, db) = library_with_one_book();
+        let path = storage.resolve_checked("books/book-1.epub").unwrap();
+        std::fs::create_dir(&path).unwrap();
+
+        let result = remove_book_files(&storage, &db, "book-1");
+
+        assert!(result.is_ok());
+        assert!(db.get_book("book-1").unwrap().is_none());
+        assert!(path.is_dir());
+    }
 }

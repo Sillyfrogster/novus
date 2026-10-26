@@ -146,7 +146,8 @@ export function LibraryCopyRow() {
     let restarting: boolean;
     try {
       restarting = await libraryCopy.install();
-    } catch {
+    } catch (error) {
+      reportPersistentError(RESTORE_PREPARE_FAILED, error);
       setActivity("idle");
       setNotice({
         tone: "error",

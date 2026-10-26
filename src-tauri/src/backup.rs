@@ -89,6 +89,10 @@ struct RestoreJournal {
     book_count: usize,
     file_count: usize,
     error: Option<String>,
+    /// Set once the live WAL and SHM are removed, so a retried rollback does not
+    /// delete a previous WAL that a failed pass restored. Read as false when absent.
+    #[serde(default)]
+    wal_cleared: bool,
 }
 
 struct SourceFile {
@@ -265,6 +269,7 @@ pub fn prepare_restore(storage: &Storage, source: &Path) -> AppResult<RestoreSum
         book_count: manifest.book_count,
         file_count: manifest.files.len(),
         error: None,
+        wal_cleared: false,
     };
     write_journal(work.path(), &journal)?;
 
@@ -1047,8 +1052,13 @@ fn rollback_startup_restore(
     return_to_incoming(&storage.covers_dir(), &incoming.join("covers"))?;
     return_to_incoming(&storage.books_dir(), &incoming.join("books"))?;
     return_to_incoming(&storage.db_path(), &incoming.join(DATABASE_PATH))?;
-    remove_if_present(&storage.root().join("novus.db-wal"))?;
-    remove_if_present(&storage.root().join("novus.db-shm"))?;
+    // Write the flag before any previous WAL is restored, so a retry never removes it.
+    if !journal.wal_cleared {
+        remove_if_present(&storage.root().join("novus.db-wal"))?;
+        remove_if_present(&storage.root().join("novus.db-shm"))?;
+        journal.wal_cleared = true;
+        write_journal(transaction, journal)?;
+    }
 
     restore_previous(&previous.join(DATABASE_PATH), &storage.db_path())?;
     restore_previous(
@@ -1587,6 +1597,56 @@ mod tests {
         let retried = Storage::for_test(root).unwrap();
         assert!(!retried.recovery_pending());
         assert_eq!(restore_status(&retried).unwrap().unwrap().state, "failed");
+    }
+
+    #[test]
+    fn repro_retry_after_partial_rollback_deletes_previous_wal() {
+        let (temp, storage, db) = create_test_library();
+        add_book(&storage, &db);
+        let backup_path = temp.path().join("library.novus-backup");
+        create_backup(&storage, &db, &backup_path, &preferences()).unwrap();
+
+        let id = digest_hex(Sha256::digest(b"book"));
+        db.delete_book(&id).unwrap();
+        drop(db);
+        std::fs::remove_dir_all(storage.books_dir()).unwrap();
+        std::fs::remove_dir_all(storage.covers_dir()).unwrap();
+        std::fs::create_dir_all(storage.books_dir()).unwrap();
+        std::fs::create_dir_all(storage.covers_dir()).unwrap();
+        // The live library had an un-checkpointed WAL and SHM when the restore began.
+        std::fs::write(storage.root().join("novus.db-wal"), b"PREVIOUS-WAL-FRAMES").unwrap();
+        std::fs::write(storage.root().join("novus.db-shm"), b"PREVIOUS-SHM").unwrap();
+
+        prepare_restore(&storage, &backup_path).unwrap();
+        commit_restore(&storage).unwrap();
+        recover_interrupted_restore(&storage).unwrap();
+        request_restore_rollback(&storage).unwrap();
+        let root = storage.root().to_path_buf();
+        drop(storage);
+
+        // First rollback attempt: the SHM rename fails after the WAL was restored.
+        let failure = RenameFailure::inject(
+            root.join(RESTORE_DIR)
+                .join(PREVIOUS_DIR)
+                .join("novus.db-shm"),
+        );
+        let first = Storage::for_test(root.clone()).unwrap();
+        assert!(first.recovery_pending());
+        drop(first);
+        drop(failure);
+        assert_eq!(
+            std::fs::read(root.join("novus.db-wal")).unwrap(),
+            b"PREVIOUS-WAL-FRAMES"
+        );
+        assert!(read_journal(&root.join(RESTORE_DIR)).unwrap().wal_cleared);
+
+        // Retry on next start.
+        let _retried = Storage::for_test(root.clone()).unwrap();
+        assert_eq!(
+            std::fs::read(root.join("novus.db-wal")).ok(),
+            Some(b"PREVIOUS-WAL-FRAMES".to_vec()),
+            "previous library WAL was deleted on retry"
+        );
     }
 
     #[test]

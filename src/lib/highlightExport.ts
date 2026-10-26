@@ -17,7 +17,7 @@ function attribution(h: Highlight, book: Book): string {
 export function formatPlain(h: Highlight, book: Book): string {
   let out = `"${h.text}"\n\n— ${book.title}${attribution(h, book) ? `, ${attribution(h, book)}` : ""}`;
   if (h.note) out += `\n\nNote: ${h.note}`;
-  return out + "\n";
+  return `${out}\n`;
 }
 
 export function formatMarkdown(h: Highlight, book: Book): string {
@@ -29,7 +29,7 @@ export function formatMarkdown(h: Highlight, book: Book): string {
   let out = `${quoted}\n>\n> — *${book.title}*, ${book.author}`;
   if (meta) out += ` (${meta})`;
   if (h.note) out += `\n\n${h.note}`;
-  return out + "\n";
+  return `${out}\n`;
 }
 
 export function formatObsidian(h: Highlight, book: Book): string {
@@ -41,7 +41,7 @@ export function formatObsidian(h: Highlight, book: Book): string {
   let out = `> [!quote] ${book.title} — ${book.author}\n${body}`;
   if (meta) out += `\n>\n> ${meta}`;
   if (h.note) out += `\n\n${h.note}`;
-  return out + "\n";
+  return `${out}\n`;
 }
 
 export function fileStem(book: Book): string {

@@ -68,6 +68,7 @@ export function HighlightContextMenu({
       ref={ref}
       className={styles.menu}
       style={{ left: pos.left, top: pos.top, width: menuWidth }}
+      // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: a dialog element holds the menu so it can use the top layer; role menu describes its contents
       role="menu"
       aria-label="Highlight actions"
       onCancel={(event) => {
@@ -125,6 +126,7 @@ export function HighlightContextMenu({
             <ImageDown size={15} strokeWidth={1.7} />
             Save image…
           </button>
+          {/* biome-ignore lint/a11y/useSemanticElements: a separator div keeps the menu markup; an hr would bring browser border styles */}
           <div className={styles.divider} role="separator" />
           <button
             type="button"
@@ -146,6 +148,7 @@ export function HighlightContextMenu({
           </button>
         </>
       )}
+      {/* biome-ignore lint/a11y/useSemanticElements: a separator div keeps the menu markup; an hr would bring browser border styles */}
       <div className={styles.divider} role="separator" />
       <button
         type="button"

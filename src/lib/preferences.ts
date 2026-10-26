@@ -198,7 +198,9 @@ function loadPreferences(): PreferencesSnapshot {
     const preferences = decodePreferences(parsedAt(storage, PREFERENCES_KEY));
     try {
       persistPreferences(preferences);
-    } catch {}
+    } catch (error) {
+      console.error("Could not save migrated settings", error);
+    }
     return preferences;
   }
 
@@ -226,7 +228,9 @@ function loadPreferences(): PreferencesSnapshot {
   try {
     persistPreferences(preferences);
     for (const key of legacyKeys) storage.removeItem(key);
-  } catch {}
+  } catch (error) {
+    console.error("Could not save migrated settings", error);
+  }
   return preferences;
 }
 

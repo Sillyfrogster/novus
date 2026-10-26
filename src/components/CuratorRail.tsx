@@ -142,6 +142,7 @@ export function CuratorRail({ books, storageRoot, onRead, onSearch }: CuratorRai
             <label className={styles.newField}>
               <span className={styles.newLabel}>New collection</span>
               <input
+                // biome-ignore lint/a11y/noAutofocus: the new-name field takes focus when it opens
                 autoFocus
                 className={styles.newInput}
                 placeholder="Name"
@@ -169,6 +170,7 @@ export function CuratorRail({ books, storageRoot, onRead, onSearch }: CuratorRai
           <div className={styles.footerMeta}>
             {editingName ? (
               <input
+                // biome-ignore lint/a11y/noAutofocus: the rename field takes focus when it opens
                 autoFocus
                 className={styles.nameInput}
                 aria-label="Profile name"

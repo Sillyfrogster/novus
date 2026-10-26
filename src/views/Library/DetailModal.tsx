@@ -267,9 +267,11 @@ export function DetailModal({
                 </div>
               ) : (
                 groups.map((group, gi) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: chapter groups are rebuilt in order each render, and the index keeps duplicate chapter labels apart
                   <section key={`${group.label}-${gi}`} className={styles.hlGroup}>
                     <div className={styles.hlChapter}>{group.label}</div>
                     {group.items.map((h) => (
+                      // biome-ignore lint/a11y/noStaticElementInteractions: the row keeps a real button for keyboard use; the context menu is a pointer shortcut
                       <div
                         key={h.id}
                         className={styles.hlRow}

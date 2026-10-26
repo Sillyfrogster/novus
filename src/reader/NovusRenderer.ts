@@ -126,15 +126,18 @@ const setStylesImportant = (el: HTMLElement, styles: Record<string, string>) => 
 };
 
 const getDirection = (doc: Document) => {
+  // biome-ignore lint/style/noNonNullAssertion: the section document keeps its window while it is mounted
   const { direction } = doc.defaultView!.getComputedStyle(doc.body);
   const rtl = doc.body.dir === "rtl" || direction === "rtl" || doc.documentElement.dir === "rtl";
   return { rtl };
 };
 
 const getBackground = (doc: Document): string => {
+  // biome-ignore lint/style/noNonNullAssertion: the section document keeps its window while it is mounted
   const body = doc.defaultView!.getComputedStyle(doc.body);
   return body.backgroundColor === "rgba(0, 0, 0, 0)" && body.backgroundImage === "none"
-    ? doc.defaultView!.getComputedStyle(doc.documentElement).background
+    ? // biome-ignore lint/style/noNonNullAssertion: the section document keeps its window while it is mounted
+      doc.defaultView!.getComputedStyle(doc.documentElement).background
     : body.background;
 };
 
@@ -245,7 +248,7 @@ export class NovusRenderer implements ReaderEngine {
   }
 
   subscribe(listener: ReaderListener): () => void {
-    if (this.#disposed) return () => {};
+    if (this.#disposed) return () => undefined;
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   }
@@ -293,7 +296,9 @@ export class NovusRenderer implements ReaderEngine {
     let path = suffixAt < 0 ? target : target.slice(0, suffixAt);
     try {
       path = decodeURI(path);
-    } catch {}
+    } catch (error) {
+      console.warn(`NovusRenderer: could not decode ${target}`, error);
+    }
     const name = path.split("/").pop();
     const section = this.#sections.find(
       (item) => name && String(item.id).split("/").pop() === name,
@@ -311,7 +316,9 @@ export class NovusRenderer implements ReaderEngine {
     try {
       const resolved = book.resolveCFI?.(cfi);
       if (resolved) return resolved;
-    } catch {}
+    } catch (error) {
+      console.warn(`NovusRenderer: book.resolveCFI failed for ${cfi}`, error);
+    }
     try {
       const parts = CFI.parse(cfi);
       const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
@@ -351,7 +358,7 @@ export class NovusRenderer implements ReaderEngine {
 
   async #goToStart(): Promise<boolean> {
     const index = this.#sections.findIndex((s) => s.linear !== "no");
-    const target = index < 0 ? 0 : index;
+    const target = Math.max(index, 0);
     if (!this.#canGoToIndex(target)) return false;
     this.#anchor = 0;
     return this.#display(target, 0, "navigation");
@@ -402,7 +409,9 @@ export class NovusRenderer implements ReaderEngine {
     this.#renderHighlights(doc);
     try {
       this.#anchor = this.#getVisibleRange();
-    } catch {}
+    } catch (error) {
+      console.warn("NovusRenderer: could not read the visible range", error);
+    }
   }
 
   clearSelection(): void {
@@ -506,6 +515,7 @@ export class NovusRenderer implements ReaderEngine {
     this.#sections[oldIndex]?.unload?.();
     if (this.#disposed || generation !== this.#displayGeneration) return false;
 
+    // biome-ignore lint/style/noNonNullAssertion: the check above returns early once the iframe is gone
     const doc = this.#iframe.contentDocument!;
     const a = typeof anchor === "function" ? anchor(doc) : anchor;
     await this.#scrollToAnchor(a, reason);
@@ -531,7 +541,7 @@ export class NovusRenderer implements ReaderEngine {
 
     return new Promise<boolean>((resolve) => {
       let settled = false;
-      let cancel = () => {};
+      let cancel = (): void => undefined;
       const finish = (mounted: boolean) => {
         if (settled) return;
         settled = true;
@@ -551,6 +561,7 @@ export class NovusRenderer implements ReaderEngine {
         const oldIndex = this.#index;
         const oldStyle = this.#styleEl;
         try {
+          // biome-ignore lint/style/noNonNullAssertion: the iframe has just loaded, so it has a document
           const doc = iframe.contentDocument!;
           if (!doc?.body) throw new Error("The publication section has no body");
 
@@ -673,7 +684,9 @@ export class NovusRenderer implements ReaderEngine {
         if (!r || r.index !== this.#index || !r.anchor) continue;
         const range = r.anchor(doc) as Range;
         if (range && range.collapsed === false) resolved.push({ h, range });
-      } catch {}
+      } catch (error) {
+        console.warn(`NovusRenderer: could not place highlight ${h.cfi}`, error);
+      }
     }
     resolved.sort((a, b) => b.range.compareBoundaryPoints(Range.START_TO_START, a.range));
     for (const { h, range } of resolved) {
@@ -693,6 +706,7 @@ export class NovusRenderer implements ReaderEngine {
       const a = (e.target as Element)?.closest?.("a[href]");
       if (!a) return;
       e.preventDefault();
+      // biome-ignore lint/style/noNonNullAssertion: the a[href] selector guarantees the attribute is present
       const raw = a.getAttribute("href")!;
       const href = section?.resolveHref?.(raw) ?? raw;
       if (book?.isExternal?.(href)) return; // no-op for now. TODO: 0.3.0
@@ -774,6 +788,7 @@ export class NovusRenderer implements ReaderEngine {
   #setImageSize(doc: Document, height: number): void {
     const margin = this.#margin;
     for (const el of doc.body.querySelectorAll<HTMLElement>("img, svg, video")) {
+      // biome-ignore lint/style/noNonNullAssertion: the section document keeps its window while it is mounted
       const { maxWidth } = doc.defaultView!.getComputedStyle(el);
       setStylesImportant(el, {
         "max-height": this.#flow === "scrolled" ? "100%" : `${height - margin * 2}px`,
@@ -862,6 +877,7 @@ export class NovusRenderer implements ReaderEngine {
   }
 
   #getVisibleRange(): Range {
+    // biome-ignore lint/style/noNonNullAssertion: the iframe stays mounted while the reader is open
     const doc = this.#iframe.contentDocument!;
     const size = this.#containerSize;
     if (this.#flow === "scrolled")
@@ -900,7 +916,7 @@ export class NovusRenderer implements ReaderEngine {
     this.#anchor = anchor;
     const target = uncollapse(anchor as Range | Node | null);
     const rects = (target as Range | Element)?.getClientRects?.();
-    if (rects && rects.length) {
+    if (rects?.length) {
       const rect = Array.from(rects).find((r) => r.width > 0 && r.height > 0) ?? rects[0];
       if (!rect) return;
       const mapped = this.#rectMapper()(rect);

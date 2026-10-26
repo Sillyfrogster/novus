@@ -45,6 +45,7 @@ function splitReference(reference: string): ReferenceParts {
 function decodePathSegment(segment: string): string | null {
   try {
     const decoded = decodeURIComponent(segment);
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting control characters in a path segment is the point of this check
     if (/[/\\\u0000-\u001f\u007f]/.test(decoded)) return null;
     return decoded;
   } catch {
@@ -140,6 +141,7 @@ function skipCssComment(css: string, start: number): number {
 function consumeCssTrivia(css: string, start: number): number {
   let cursor = start;
   while (cursor < css.length) {
+    // biome-ignore lint/style/noNonNullAssertion: the while loop condition keeps cursor inside css
     if (isCssWhitespace(css[cursor]!)) {
       cursor += 1;
     } else if (css.startsWith("/*", cursor)) {
@@ -155,6 +157,7 @@ function readCssEscape(css: string, start: number): { end: number; value: string
   let cursor = start + 1;
   if (cursor >= css.length) return null;
 
+  // biome-ignore lint/style/noNonNullAssertion: the cursor check above returns early when cursor is at the end of css
   const first = css[cursor]!;
   if (first === "\n" || first === "\f") return { end: cursor + 1, value: "" };
   if (first === "\r") {
@@ -167,6 +170,7 @@ function readCssEscape(css: string, start: number): { end: number; value: string
   if (!CSS_HEX.test(first)) return { end: cursor + 1, value: first };
 
   const hexStart = cursor;
+  // biome-ignore lint/style/noNonNullAssertion: cursor < css.length is checked first in this same condition
   while (cursor < css.length && cursor - hexStart < 6 && CSS_HEX.test(css[cursor]!)) {
     cursor += 1;
   }
@@ -190,6 +194,7 @@ function readCssString(css: string, start: number): CssString | null {
   let cursor = start + 1;
   let value = "";
   while (cursor < css.length) {
+    // biome-ignore lint/style/noNonNullAssertion: the while loop condition keeps cursor inside css
     const character = css[cursor]!;
     if (character === quote) {
       return {
@@ -201,10 +206,10 @@ function readCssString(css: string, start: number): CssString | null {
     }
     if (character === "\n" || character === "\r" || character === "\f") return null;
     if (character === "\\") {
-      const escape = readCssEscape(css, cursor);
-      if (!escape) return null;
-      value += escape.value;
-      cursor = escape.end;
+      const cssEscape = readCssEscape(css, cursor);
+      if (!cssEscape) return null;
+      value += cssEscape.value;
+      cursor = cssEscape.end;
       continue;
     }
     value += character;
@@ -237,6 +242,7 @@ function readCssUrl(css: string, start: number): CssUrl | null {
   let trailingTrivia = false;
 
   while (cursor < css.length) {
+    // biome-ignore lint/style/noNonNullAssertion: the while loop condition keeps cursor inside css
     const character = css[cursor]!;
     if (character === ")") {
       return {
@@ -256,10 +262,10 @@ function readCssUrl(css: string, start: number): CssUrl | null {
       return null;
     }
     if (character === "\\") {
-      const escape = readCssEscape(css, cursor);
-      if (!escape) return null;
-      reference += escape.value;
-      cursor = escape.end;
+      const cssEscape = readCssEscape(css, cursor);
+      if (!cssEscape) return null;
+      reference += cssEscape.value;
+      cursor = cssEscape.end;
       valueEnd = cursor;
       continue;
     }
@@ -319,6 +325,7 @@ export function rewritePublicationCss(
       continue;
     }
 
+    // biome-ignore lint/style/noNonNullAssertion: the while loop condition keeps cursor inside css
     const character = css[cursor]!;
     if (character === "'" || character === '"') {
       cursor = readCssString(css, cursor)?.end ?? css.length;
@@ -384,12 +391,14 @@ export function rewritePublicationSrcset(
   let cursor = 0;
 
   while (cursor < srcset.length) {
+    // biome-ignore lint/style/noNonNullAssertion: the loop condition keeps cursor inside srcset
     while (cursor < srcset.length && (isCssWhitespace(srcset[cursor]!) || srcset[cursor] === ",")) {
       cursor += 1;
     }
     if (cursor >= srcset.length) break;
 
     const urlStart = cursor;
+    // biome-ignore lint/style/noNonNullAssertion: the loop condition keeps cursor inside srcset
     while (cursor < srcset.length && !isCssWhitespace(srcset[cursor]!)) cursor += 1;
 
     let urlEnd = cursor;
@@ -404,6 +413,7 @@ export function rewritePublicationSrcset(
 
     let parentheses = 0;
     while (cursor < srcset.length) {
+      // biome-ignore lint/style/noNonNullAssertion: the while loop condition keeps cursor inside srcset
       const character = srcset[cursor]!;
       if (character === "(") parentheses += 1;
       else if (character === ")" && parentheses > 0) parentheses -= 1;

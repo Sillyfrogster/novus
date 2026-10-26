@@ -380,6 +380,7 @@ export function Library({ dropping }: LibraryProps) {
   };
 
   // search bar
+  // biome-ignore lint/correctness/useExhaustiveDependencies: openSearch only calls state setters, so one listener for the mount is enough
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
@@ -408,6 +409,7 @@ export function Library({ dropping }: LibraryProps) {
     setPeek(null);
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the timer is cleared once, on unmount
   useEffect(() => clearPeekTimer, []);
 
   const activeCollection =

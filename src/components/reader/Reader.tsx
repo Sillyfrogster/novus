@@ -114,7 +114,9 @@ export function Reader() {
         totalPages: hasPages ? location.total : null,
         progress: pct,
         startedAt: sessionStartedAt.current,
-      }).catch(() => {});
+      }).catch((error: unknown) => {
+        console.warn("Reader: could not update Discord presence", error);
+      });
     }, DISCORD_UPDATE_MS);
     return () => clearTimeout(timer);
   }, [book, chapter, location, pct, ready]);
@@ -122,7 +124,9 @@ export function Reader() {
   useEffect(() => {
     if (!isDesktop) return;
     return () => {
-      void clearDiscordPresence().catch(() => {});
+      void clearDiscordPresence().catch((error: unknown) => {
+        console.warn("Reader: could not clear Discord presence", error);
+      });
     };
   }, []);
 

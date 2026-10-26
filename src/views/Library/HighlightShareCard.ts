@@ -24,8 +24,8 @@ async function ensureFonts(passSize: number): Promise<void> {
       document.fonts.load(`500 30px ${FONT_DISPLAY}`),
       document.fonts.load(`400 ${passSize}px ${FONT_SERIF}`),
     ]);
-  } catch {
-    // Fall back to whatever is available.
+  } catch (error) {
+    console.warn("HighlightShareCard: could not load fonts, using fallbacks", error);
   }
 }
 
@@ -118,14 +118,16 @@ export async function renderHighlightCard(h: Highlight, book: Book): Promise<HTM
   // Book title.
   ctx.fillStyle = MUTED;
   ctx.font = `500 ${titleSize}px ${FONT_DISPLAY}`;
-  titleLines.forEach((line, i) =>
-    ctx.fillText(line, PAD, titleTop + i * (titleSize * 1.2) + titleSize),
-  );
+  titleLines.forEach((line, i) => {
+    ctx.fillText(line, PAD, titleTop + i * (titleSize * 1.2) + titleSize);
+  });
 
   // Passage.
   ctx.fillStyle = INK;
   ctx.font = `400 ${passSize}px ${FONT_SERIF}`;
-  passLines.forEach((line, i) => ctx.fillText(line, PAD, passTop + i * passLH + passSize));
+  passLines.forEach((line, i) => {
+    ctx.fillText(line, PAD, passTop + i * passLH + passSize);
+  });
 
   // Hairline rule.
   ctx.strokeStyle = LINE;
@@ -138,9 +140,9 @@ export async function renderHighlightCard(h: Highlight, book: Book): Promise<HTM
   // Attribution.
   ctx.fillStyle = FAINT;
   ctx.font = `400 ${attrSize}px ${FONT_SERIF}`;
-  attrLines.forEach((line, i) =>
-    ctx.fillText(line, PAD, attrTop + i * (attrSize * 1.5) + attrSize),
-  );
+  attrLines.forEach((line, i) => {
+    ctx.fillText(line, PAD, attrTop + i * (attrSize * 1.5) + attrSize);
+  });
 
   return canvas;
 }

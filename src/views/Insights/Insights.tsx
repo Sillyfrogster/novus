@@ -21,6 +21,7 @@ function localDayKey(daysAgo: number): string {
 /** "Jun 12" from a local YYYY-MM-DD key. */
 function dayLabel(key: string): string {
   const [y, m, d] = key.split("-").map(Number);
+  // biome-ignore lint/style/noNonNullAssertion: keys are built as YYYY-MM-DD, so every part is present
   return new Date(y!, m! - 1, d!).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -143,6 +144,7 @@ export function Insights() {
                 ))}
               </div>
               <div className={styles.chartAxis} aria-hidden="true">
+                {/* biome-ignore lint/style/noNonNullAssertion: fillDays always returns DAYS_SHOWN slots, so index 0 exists */}
                 <span>{dayLabel(days[0]!.day)}</span>
                 <span>today</span>
               </div>

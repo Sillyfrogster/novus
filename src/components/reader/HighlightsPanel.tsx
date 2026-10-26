@@ -125,6 +125,7 @@ export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
           </div>
         ) : (
           groups.map((group, gi) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: chapter groups are rebuilt in order each render, and the index keeps duplicate chapter labels apart
             <section key={`${group.label}-${gi}`} className={styles.group}>
               <div className={styles.chapter}>{group.label}</div>
               {group.items.map((h) => (

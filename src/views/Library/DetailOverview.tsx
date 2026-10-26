@@ -196,6 +196,7 @@ export function DetailOverview({ book, onRead, onRemove }: DetailOverviewProps) 
           <label className={styles.chipField}>
             <span className={styles.chipLabel}>New collection</span>
             <input
+              // biome-ignore lint/a11y/noAutofocus: the chip input takes focus so the user can type at once
               autoFocus
               className={styles.chipInput}
               placeholder="Name"

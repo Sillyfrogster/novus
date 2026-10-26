@@ -28,7 +28,7 @@ declare module "*/foliate-js/progress.js" {
 
 declare module "*/foliate-js/epubcfi.js" {
   export const isCFI: RegExp;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: foliate-js returns an untyped CFI object that callers narrow
   export function parse(cfi: string): any;
   export function fromRange(range: Range, filter?: unknown): string;
   export function toRange(doc: Document, parts: unknown, filter?: unknown): Range;

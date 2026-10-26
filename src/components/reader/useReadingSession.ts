@@ -100,7 +100,9 @@ export function useReadingSession({
         const pending = pendingSave.current;
         if (!pending) return;
         pendingSave.current = null;
-        saveReadingState(currentBook.id, pending.cfi, pending.fraction).catch(() => {});
+        saveReadingState(currentBook.id, pending.cfi, pending.fraction).catch((error: unknown) => {
+          console.warn("useReadingSession: could not save reading position", error);
+        });
       }, DWELL_SAVE_MS);
     };
 
@@ -118,7 +120,11 @@ export function useReadingSession({
 
     const flushSession = () => {
       const record = activitySession.current?.toRecord(currentBook.id);
-      if (record) recordSession(record).catch(() => {});
+      if (record) {
+        recordSession(record).catch((error: unknown) => {
+          console.warn("useReadingSession: could not record session", error);
+        });
+      }
     };
     const flushTimer = setInterval(flushSession, SESSION_FLUSH_MS);
 
@@ -163,7 +169,9 @@ export function useReadingSession({
       if (saveTimer.current) clearTimeout(saveTimer.current);
       const pending = pendingSave.current;
       if (pending && Date.now() - lastMoveAt.current >= UNMOUNT_SAVE_MIN_DWELL_MS) {
-        saveReadingState(currentBook.id, pending.cfi, pending.fraction).catch(() => {});
+        saveReadingState(currentBook.id, pending.cfi, pending.fraction).catch((error: unknown) => {
+          console.warn("useReadingSession: could not save reading position", error);
+        });
       }
       pendingSave.current = null;
       clearInterval(flushTimer);
@@ -208,12 +216,20 @@ export function useReadingSession({
 
   const goTo = useCallback((target: string) => {
     const renderer = rendererRef.current;
-    if (renderer) void renderer.navigate({ kind: "target", value: target }).catch(() => {});
+    if (renderer) {
+      void renderer.navigate({ kind: "target", value: target }).catch((error: unknown) => {
+        console.warn("useReadingSession: could not navigate to target", error);
+      });
+    }
   }, []);
 
   const goToHighlight = useCallback((cfi: string) => {
     const renderer = rendererRef.current;
-    if (renderer) void renderer.navigate({ kind: "highlight", value: cfi }).catch(() => {});
+    if (renderer) {
+      void renderer.navigate({ kind: "highlight", value: cfi }).catch((error: unknown) => {
+        console.warn("useReadingSession: could not navigate to highlight", error);
+      });
+    }
   }, []);
 
   const dismissSelection = useCallback(() => {

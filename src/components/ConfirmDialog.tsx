@@ -31,6 +31,7 @@ export function ConfirmDialog({
       <h2 className={styles.title}>{title}</h2>
       <p className={styles.body}>{body}</p>
       <div className={styles.actions}>
+        {/* biome-ignore lint/a11y/noAutofocus: focus lands on Cancel when the dialog opens, the safe default for a confirm */}
         <button type="button" autoFocus className={styles.cancel} onClick={onCancel}>
           Cancel
         </button>

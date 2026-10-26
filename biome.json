@@ -27,6 +27,13 @@
       "trailingCommas": "all"
     }
   },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": { "level": "off" }
+      }
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {

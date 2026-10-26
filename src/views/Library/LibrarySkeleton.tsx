@@ -36,6 +36,7 @@ export function LibrarySkeleton() {
           </div>
           <div className={styles.skeletonCoverRow}>
             {Array.from({ length: PLACEHOLDER_COVERS }, (_, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a fixed placeholder list that never reorders
               <span key={index} className={styles.skeletonCover} />
             ))}
           </div>

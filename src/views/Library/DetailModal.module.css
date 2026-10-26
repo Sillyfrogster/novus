@@ -40,6 +40,7 @@
 @media (prefers-reduced-motion: reduce) {
   .modal {
     transition: opacity 0.2s ease;
+    /* biome-ignore lint/complexity/noImportantStyles: overrides the inline transform set in DetailModal.tsx */
     transform: translate(-50%, -50%) !important;
   }
 }

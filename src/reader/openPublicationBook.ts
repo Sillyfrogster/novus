@@ -191,12 +191,16 @@ export async function openPublicationBook(
         if (closed) return;
         closed = true;
         for (const section of managedSections) section.close();
-        void closePublication(opened.session).catch(() => {});
+        void closePublication(opened.session).catch((error: unknown) => {
+          console.warn("openPublicationBook: could not close publication", error);
+        });
       },
     };
     return { book, savedLocator: opened.savedLocator };
   } catch (error) {
-    await closePublication(opened.session).catch(() => {});
+    await closePublication(opened.session).catch((error: unknown) => {
+      console.warn("openPublicationBook: could not close publication", error);
+    });
     throw error;
   }
 }

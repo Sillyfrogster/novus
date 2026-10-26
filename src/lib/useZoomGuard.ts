@@ -11,7 +11,9 @@ export function useZoomGuard(): void {
   const view = useLibrary((s) => s.view);
 
   useEffect(() => {
-    invoke("set_zoom_locked", { locked: view !== "reader" }).catch(() => {});
+    invoke("set_zoom_locked", { locked: view !== "reader" }).catch((error: unknown) => {
+      console.warn("useZoomGuard: could not set zoom lock", error);
+    });
   }, [view]);
 
   useEffect(() => {

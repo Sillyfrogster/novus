@@ -36,8 +36,8 @@ function memoryBackend(
   return {
     list,
     add: async (input) => ({ ...input, createdAt: 1 }),
-    setNote: async () => {},
-    remove: async () => {},
+    setNote: async () => undefined,
+    remove: async () => undefined,
     ...overrides,
   };
 }

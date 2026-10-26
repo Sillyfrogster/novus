@@ -21,6 +21,7 @@ export function Toast() {
     return () => window.clearTimeout(t);
   }, [message, appNotice, clear]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the effect should restart when a new message arrives
   useEffect(() => {
     const toast = toastRef.current;
     if (!toast || !("showPopover" in toast)) return;
@@ -32,7 +33,9 @@ export function Toast() {
     return () => {
       try {
         toast.hidePopover();
-      } catch {}
+      } catch (error) {
+        console.warn("Toast: could not hide popover", error);
+      }
     };
   }, [message]);
 

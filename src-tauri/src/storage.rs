@@ -9,6 +9,7 @@ use crate::error::{AppError, AppResult};
 pub struct Storage {
     root: PathBuf,
     _lock: File,
+    recovery_pending: bool,
 }
 
 impl Storage {
@@ -22,10 +23,7 @@ impl Storage {
         std::fs::create_dir_all(&root)?;
         let storage = Self::open(root, Duration::from_secs(3))?;
         crate::backup::cleanup_stale_work(&storage);
-        crate::backup::recover_interrupted_restore(&storage)?;
-        std::fs::create_dir_all(storage.books_dir())?;
-        std::fs::create_dir_all(storage.covers_dir())?;
-        Ok(storage)
+        Self::finish_open(storage)
     }
 
     #[cfg(test)]
@@ -33,7 +31,19 @@ impl Storage {
         std::fs::create_dir_all(&root)?;
         let storage = Self::open(root, Duration::ZERO)?;
         crate::backup::cleanup_stale_work(&storage);
-        crate::backup::recover_interrupted_restore(&storage)?;
+        Self::finish_open(storage)
+    }
+
+    /// Runs startup recovery. A failed recovery leaves the journal for the
+    /// next start instead of failing the launch.
+    fn finish_open(mut storage: Self) -> AppResult<Self> {
+        if let Err(error) = crate::backup::recover_interrupted_restore(&storage) {
+            eprintln!(
+                "Novus could not finish recovering the library copy; the next start will retry: {error}"
+            );
+            storage.recovery_pending = true;
+            return Ok(storage);
+        }
         std::fs::create_dir_all(storage.books_dir())?;
         std::fs::create_dir_all(storage.covers_dir())?;
         Ok(storage)
@@ -49,7 +59,13 @@ impl Storage {
         let started = Instant::now();
         loop {
             match lock.try_lock() {
-                Ok(()) => return Ok(Self { root, _lock: lock }),
+                Ok(()) => {
+                    return Ok(Self {
+                        root,
+                        _lock: lock,
+                        recovery_pending: false,
+                    })
+                }
                 Err(TryLockError::WouldBlock) if started.elapsed() < wait => {
                     let remaining = wait.saturating_sub(started.elapsed());
                     std::thread::sleep(remaining.min(Duration::from_millis(50)));
@@ -66,6 +82,11 @@ impl Storage {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// True when startup recovery failed and was left for the next start.
+    pub fn recovery_pending(&self) -> bool {
+        self.recovery_pending
     }
 
     pub fn db_path(&self) -> PathBuf {

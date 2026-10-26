@@ -1180,7 +1180,26 @@ fn discard_transaction(storage: &Storage, transaction: &Path) -> AppResult<()> {
     Ok(())
 }
 
+#[cfg(test)]
+thread_local! {
+    static FAIL_RENAME_FROM: std::cell::RefCell<Option<PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn fail_injected_rename(source: &Path) -> AppResult<()> {
+    let injected = FAIL_RENAME_FROM.with(|slot| slot.borrow().as_deref() == Some(source));
+    if injected {
+        return Err(AppError::Io(std::io::Error::other(
+            "injected rename failure",
+        )));
+    }
+    Ok(())
+}
+
 fn rename_durable(source: &Path, destination: &Path) -> AppResult<()> {
+    #[cfg(test)]
+    fail_injected_rename(source)?;
     std::fs::rename(source, destination)?;
     if let Some(parent) = source.parent() {
         sync_directory(parent)?;
@@ -1502,6 +1521,72 @@ mod tests {
         assert_eq!(status.state, "failed");
         let db = Db::open(&storage.db_path(), || storage.remove_legacy_voice_data()).unwrap();
         assert!(db.list_books().unwrap().is_empty());
+    }
+
+    /// Makes the rename from `path` fail until the guard is dropped.
+    struct RenameFailure;
+
+    impl RenameFailure {
+        fn inject(path: PathBuf) -> Self {
+            FAIL_RENAME_FROM.with(|slot| *slot.borrow_mut() = Some(path));
+            Self
+        }
+    }
+
+    impl Drop for RenameFailure {
+        fn drop(&mut self) {
+            FAIL_RENAME_FROM.with(|slot| *slot.borrow_mut() = None);
+        }
+    }
+
+    #[test]
+    fn a_failed_startup_rollback_keeps_the_journal_and_the_library_lock() {
+        let (temp, storage, db) = create_test_library();
+        add_book(&storage, &db);
+        let backup_path = temp.path().join("library.novus-backup");
+        create_backup(&storage, &db, &backup_path, &preferences()).unwrap();
+
+        let id = digest_hex(Sha256::digest(b"book"));
+        db.delete_book(&id).unwrap();
+        drop(db);
+        std::fs::remove_dir_all(storage.books_dir()).unwrap();
+        std::fs::remove_dir_all(storage.covers_dir()).unwrap();
+        std::fs::create_dir_all(storage.books_dir()).unwrap();
+        std::fs::create_dir_all(storage.covers_dir()).unwrap();
+
+        prepare_restore(&storage, &backup_path).unwrap();
+        commit_restore(&storage).unwrap();
+        recover_interrupted_restore(&storage).unwrap();
+        request_restore_rollback(&storage).unwrap();
+
+        let root = storage.root().to_path_buf();
+        drop(storage);
+
+        // Interrupts the rollback after the live library has moved out.
+        let previous_database = root
+            .join(RESTORE_DIR)
+            .join(PREVIOUS_DIR)
+            .join(DATABASE_PATH);
+        let failure = RenameFailure::inject(previous_database);
+        let pending =
+            Storage::for_test(root.clone()).expect("pending recovery must not fail the launch");
+
+        assert!(pending.recovery_pending());
+        assert!(Storage::for_test(root.clone()).is_err());
+        assert_eq!(
+            restore_status(&pending).unwrap().unwrap().state,
+            "rollingBack"
+        );
+        assert!(!pending.db_path().exists());
+        assert!(!pending.books_dir().exists());
+        assert!(!pending.covers_dir().exists());
+
+        drop(pending);
+        drop(failure);
+
+        let retried = Storage::for_test(root).unwrap();
+        assert!(!retried.recovery_pending());
+        assert_eq!(restore_status(&retried).unwrap().unwrap().state, "failed");
     }
 
     #[test]

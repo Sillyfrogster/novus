@@ -5,6 +5,10 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+    /* TypeScript 7 no longer auto-includes @types packages; bun:test needs bun listed. */
+    "types": ["bun"],
+    /* TypeScript 7 rejects side-effect font imports under this strict check. */
+    "noUncheckedSideEffectImports": false,
 
     /* Bundler mode */
     "moduleResolution": "bundler",

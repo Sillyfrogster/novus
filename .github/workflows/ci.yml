@@ -55,7 +55,7 @@ jobs:
         run: bun run check:catch
 
       - name: Test
-        run: bun test --coverage
+        run: bun test --isolate --coverage
 
       - name: Build frontend
         run: bun run build

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test": "bun test",
+    "test": "bun test --isolate",
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "biome ci --error-on-warnings .",

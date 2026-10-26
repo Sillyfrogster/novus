@@ -14,6 +14,7 @@ import {
   storageRoot,
 } from "../lib/ipc";
 import { messageOf } from "../lib/errors";
+import { registerErrorSink } from "../lib/errorReport";
 import { isDesktop } from "../lib/platform";
 import type { Book, Collection, InsightsData, View } from "../lib/types";
 
@@ -230,3 +231,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
     }
   },
 }));
+
+registerErrorSink((text) =>
+  useLibrary.getState().showAppNotice({ text, tone: "error", persistent: true }),
+);

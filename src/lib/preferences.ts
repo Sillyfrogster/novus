@@ -1,5 +1,6 @@
 import { create } from "zustand";
 
+import { reportPersistentError } from "./errorReport";
 import type {
   AppTheme,
   HighlightColorKey,
@@ -240,9 +241,16 @@ function snapshotFrom(state: PreferencesSnapshot): PreferencesSnapshot {
 
 export const usePreferences = create<PreferencesSnapshot>(() => loadPreferences());
 
+const SETTINGS_SAVE_FAILED = "Couldn't save your settings. They'll reset when Novus restarts.";
+
+/** Set state before writing, so a failed write keeps the setting visible this session. */
 function commit(preferences: PreferencesSnapshot): void {
-  persistPreferences(preferences);
   usePreferences.setState(preferences);
+  try {
+    persistPreferences(preferences);
+  } catch (error) {
+    reportPersistentError(SETTINGS_SAVE_FAILED, error);
+  }
 }
 
 function update(patch: Partial<PreferencesSnapshot>): void {
@@ -301,8 +309,7 @@ export function currentPreferences(): PreferencesSnapshot {
 
 export function replacePreferences(value: unknown): PreferencesSnapshot {
   const preferences = decodePreferences(value);
-  persistPreferences(preferences);
-  usePreferences.setState(preferences);
+  commit(preferences);
   return clonePreferences(preferences);
 }
 

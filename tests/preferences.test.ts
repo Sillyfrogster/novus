@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
 class MemoryStorage implements Storage {
   readonly #values = new Map<string, string>();
@@ -49,6 +49,7 @@ storage.setItem("novus.lastSeenVersion", "0.4.0");
 
 const preferences = await import("../src/lib/preferences");
 const { createLibraryCopy } = await import("../src/lib/libraryCopy");
+const { registerErrorSink } = await import("../src/lib/errorReport");
 const migrated = preferences.currentPreferences();
 
 describe("durable preferences", () => {
@@ -143,6 +144,51 @@ describe("durable preferences", () => {
     expect(rolledBack).toBe(1);
     expect(relaunched).toBe(1);
     expect(preferences.currentPreferences()).toEqual(previous);
+  });
+});
+
+/** Runs the callback with every storage write throwing, then restores the real write. */
+function withFailingWrites<T>(run: () => T): T {
+  const write = storage.setItem;
+  storage.setItem = () => {
+    throw new Error("quota exceeded");
+  };
+  try {
+    return run();
+  } finally {
+    storage.setItem = write;
+  }
+}
+
+describe("failed preference saves", () => {
+  afterEach(() => {
+    registerErrorSink(() => undefined);
+  });
+
+  test("keeps a changed setting in state when the write fails", () => {
+    const consoleError = spyOn(console, "error").mockImplementation(() => undefined);
+
+    withFailingWrites(() => preferences.setProfileName("Kept for the session"));
+
+    expect(preferences.currentPreferences().profileName).toBe("Kept for the session");
+    consoleError.mockRestore();
+  });
+
+  test("reports the settings copy and logs the raw error when the write fails", () => {
+    const consoleError = spyOn(console, "error").mockImplementation(() => undefined);
+    const reported: string[] = [];
+    registerErrorSink((text) => {
+      reported.push(text);
+    });
+
+    withFailingWrites(() => preferences.setProfileName("Reported"));
+
+    expect(reported).toEqual(["Couldn't save your settings. They'll reset when Novus restarts."]);
+    expect(consoleError).toHaveBeenCalledWith(
+      "Couldn't save your settings. They'll reset when Novus restarts.",
+      expect.any(Error),
+    );
+    consoleError.mockRestore();
   });
 });
 

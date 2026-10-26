@@ -2,10 +2,14 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { ArchiveRestore, BookCopy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { reportPersistentError } from "../../lib/errorReport";
 import { libraryCopy, type RestoreSummary } from "../../lib/libraryCopy";
 import { useLibrary } from "../../store/library";
 import { ConfirmDialog } from "../ConfirmDialog";
 import styles from "./AboutPanel.module.css";
+
+const EXPORT_FAILED = "Couldn't save the library copy. Your library is unchanged.";
+const RESTORE_PREPARE_FAILED = "Couldn't restore the library copy. Your library is unchanged.";
 
 type Activity = "idle" | "backingUp" | "preparing" | "cancelling" | "restarting";
 
@@ -30,7 +34,8 @@ export function LibraryCopyRow() {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      void libraryCopy.cancel().catch(() => {
+      void libraryCopy.cancel().catch((error: unknown) => {
+        console.error("LibraryCopyRow: could not cancel the restore", error);
         showBackgroundNotice(
           "Novus could not cancel the restore. Restart Novus and try again.",
           "error",
@@ -51,7 +56,8 @@ export function LibraryCopyRow() {
         return;
       }
       setNotice(summary ? { tone: "quiet", text: "Your library copy is saved." } : null);
-    } catch {
+    } catch (error) {
+      reportPersistentError(EXPORT_FAILED, error);
       if (!mounted.current) {
         showBackgroundNotice(
           "Novus could not save this library copy. Choose another location and try again.",
@@ -92,7 +98,8 @@ export function LibraryCopyRow() {
     try {
       const summary = await libraryCopy.prepare(source);
       if (!mounted.current) {
-        await libraryCopy.cancel().catch(() => {
+        await libraryCopy.cancel().catch((error: unknown) => {
+          console.error("LibraryCopyRow: could not cancel the restore", error);
           showBackgroundNotice(
             "Novus could not cancel the restore. Restart Novus and try again.",
             "error",
@@ -103,7 +110,8 @@ export function LibraryCopyRow() {
       }
       setPrepared({ name: fileName(source), summary });
       setNotice(null);
-    } catch {
+    } catch (error) {
+      reportPersistentError(RESTORE_PREPARE_FAILED, error);
       if (!mounted.current) return;
       setNotice({
         tone: "error",

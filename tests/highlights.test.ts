@@ -20,6 +20,16 @@ function highlight(id: string, bookId: string): Highlight {
   };
 }
 
+function recorder() {
+  const reports: Array<[string, unknown]> = [];
+  return {
+    reports,
+    report: (text: string, error: unknown) => {
+      reports.push([text, error]);
+    },
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -162,35 +172,45 @@ describe("highlight transactions", () => {
     expect(store.getState().highlights.map(({ id }) => id)).toEqual(["a2"]);
   });
 
-  /** This failure is silent today. */
-  test("keeps the row and returns null when the backend delete fails", async () => {
+  /** A failed delete shows the error and keeps the row. */
+  test("keeps the row, returns null, and reports when the backend delete fails", async () => {
+    const reported = recorder();
     const store = createHighlightsStore(
       memoryBackend(async (bookId) => [highlight("a1", bookId)], {
         remove: async () => {
           throw new Error("delete failed");
         },
       }),
+      reported.report,
     );
     await store.getState().loadFor("a");
 
     expect(await store.getState().remove("a1")).toBeNull();
     expect(store.getState().highlights.map(({ id }) => id)).toEqual(["a1"]);
+    expect(reported.reports).toEqual([
+      ["Couldn't delete this highlight. It's still there.", expect.any(Error)],
+    ]);
   });
 
-  /** This failure is silent today. */
-  test("keeps the previous durable note when the backend note write fails", async () => {
+  /** A failed note save shows the error and keeps the saved note. */
+  test("keeps the previous durable note and reports when the backend note write fails", async () => {
+    const reported = recorder();
     const store = createHighlightsStore(
       memoryBackend(async (bookId) => [{ ...highlight("a1", bookId), note: "durable" }], {
         setNote: async () => {
           throw new Error("write failed");
         },
       }),
+      reported.report,
     );
     await store.getState().loadFor("a");
 
     await store.getState().updateNote("a1", "edited");
 
     expect(store.getState().highlights[0]?.note).toBe("durable");
+    expect(reported.reports).toEqual([
+      ["Couldn't save this note. Your last saved note is still there.", expect.any(Error)],
+    ]);
   });
 
   test("restores a deleted highlight with its original fields and id", async () => {
@@ -215,8 +235,9 @@ describe("highlight transactions", () => {
     expect(store.getState().highlights.map(({ id }) => id)).toEqual(["a1"]);
   });
 
-  /** This failure is silent today. */
-  test("returns false and leaves the row absent when the backend restore fails", async () => {
+  /** A failed restore shows the error and leaves the row out. */
+  test("returns false, leaves the row absent, and reports when the backend restore fails", async () => {
+    const reported = recorder();
     const original = highlight("a1", "a");
     const store = createHighlightsStore(
       memoryBackend(async () => [original], {
@@ -224,12 +245,16 @@ describe("highlight transactions", () => {
           throw new Error("restore failed");
         },
       }),
+      reported.report,
     );
     await store.getState().loadFor("a");
     await store.getState().remove("a1");
 
     expect(await store.getState().restore(original)).toBe(false);
     expect(store.getState().highlights).toEqual([]);
+    expect(reported.reports).toEqual([
+      ["Couldn't restore this highlight. It stays deleted.", expect.any(Error)],
+    ]);
   });
 
   test("captures a highlight with the explicit id and stores the saved row", async () => {
@@ -275,8 +300,9 @@ describe("highlight transactions", () => {
     expect(store.getState().highlights).toEqual([saved]);
   });
 
-  /** This failure is silent today. */
-  test("returns null and leaves state unchanged when the backend capture fails", async () => {
+  /** A failed capture shows the error and leaves state unchanged. */
+  test("returns null, leaves state unchanged, and reports when the backend capture fails", async () => {
+    const reported = recorder();
     const existing = highlight("a1", "a");
     const store = createHighlightsStore(
       memoryBackend(async () => [existing], {
@@ -284,6 +310,7 @@ describe("highlight transactions", () => {
           throw new Error("capture failed");
         },
       }),
+      reported.report,
     );
     await store.getState().loadFor("a");
 
@@ -301,5 +328,11 @@ describe("highlight transactions", () => {
 
     expect(result).toBeNull();
     expect(store.getState().highlights).toEqual([existing]);
+    expect(reported.reports).toEqual([
+      [
+        "Couldn't save this highlight. It won't be there next time you open the book.",
+        expect.any(Error),
+      ],
+    ]);
   });
 });

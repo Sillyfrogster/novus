@@ -7,7 +7,10 @@ import {
   setHighlightNote,
   type NewHighlight,
 } from "../lib/ipc";
+import { reportPersistentError } from "../lib/errorReport";
 import type { Highlight, HighlightColorKey } from "../lib/types";
+
+export type ReportError = (text: string, error: unknown) => void;
 
 export interface CaptureInput {
   id?: string;
@@ -60,7 +63,10 @@ function order(highlights: Highlight[]): Highlight[] {
   });
 }
 
-export function createHighlightsStore(backend: HighlightsBackend) {
+export function createHighlightsStore(
+  backend: HighlightsBackend,
+  report: ReportError = reportPersistentError,
+) {
   let loadSequence = 0;
   let readyBook: string | null = null;
   let pendingLoad: { bookId: string; promise: Promise<void> } | null = null;
@@ -137,7 +143,11 @@ export function createHighlightsStore(backend: HighlightsBackend) {
           const saved = await run(() => backend.add(payload));
           change(input.bookId, (highlights) => [...highlights, saved], true);
           return saved;
-        } catch {
+        } catch (error) {
+          report(
+            "Couldn't save this highlight. It won't be there next time you open the book.",
+            error,
+          );
           return null;
         }
       },
@@ -154,8 +164,8 @@ export function createHighlightsStore(backend: HighlightsBackend) {
               highlight.id === id ? { ...highlight, note: clean } : highlight,
             ),
           );
-        } catch {
-          // The visible note remains at its durable value.
+        } catch (error) {
+          report("Couldn't save this note. Your last saved note is still there.", error);
         }
       },
 
@@ -168,7 +178,8 @@ export function createHighlightsStore(backend: HighlightsBackend) {
           await run(() => backend.remove(id));
           change(bookId, (highlights) => highlights.filter((highlight) => highlight.id !== id));
           return removed;
-        } catch {
+        } catch (error) {
+          report("Couldn't delete this highlight. It's still there.", error);
           return null;
         }
       },
@@ -181,7 +192,8 @@ export function createHighlightsStore(backend: HighlightsBackend) {
           const saved = await run(() => backend.add(payload));
           change(highlight.bookId, (highlights) => [...highlights, saved], true);
           return true;
-        } catch {
+        } catch (error) {
+          report("Couldn't restore this highlight. It stays deleted.", error);
           return false;
         }
       },

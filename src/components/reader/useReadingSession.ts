@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { reportPersistentError } from "../../lib/errorReport";
 import { messageOf } from "../../lib/errors";
 import { recordSession, saveReadingState } from "../../lib/ipc";
 import { type HighlightColors, type ReaderSettings, usePreferences } from "../../lib/preferences";
@@ -13,6 +14,8 @@ import { useLibrary } from "../../store/library";
 const DWELL_SAVE_MS = 3000;
 const UNMOUNT_SAVE_MIN_DWELL_MS = 1500;
 const SESSION_FLUSH_MS = 60_000;
+const READING_POSITION_FAILED =
+  "Couldn't save your place in this book. Next time you open it, you may start from an earlier spot.";
 
 function toPresentation(settings: ReaderSettings, colors: HighlightColors): ReaderPresentation {
   return {
@@ -101,7 +104,7 @@ export function useReadingSession({
         if (!pending) return;
         pendingSave.current = null;
         saveReadingState(currentBook.id, pending.cfi, pending.fraction).catch((error: unknown) => {
-          console.warn("useReadingSession: could not save reading position", error);
+          reportPersistentError(READING_POSITION_FAILED, error);
         });
       }, DWELL_SAVE_MS);
     };
@@ -170,7 +173,7 @@ export function useReadingSession({
       const pending = pendingSave.current;
       if (pending && Date.now() - lastMoveAt.current >= UNMOUNT_SAVE_MIN_DWELL_MS) {
         saveReadingState(currentBook.id, pending.cfi, pending.fraction).catch((error: unknown) => {
-          console.warn("useReadingSession: could not save reading position", error);
+          reportPersistentError(READING_POSITION_FAILED, error);
         });
       }
       pendingSave.current = null;

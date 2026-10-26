@@ -28,6 +28,9 @@
 .toast[data-tone="success"] .icon {
   color: var(--accent);
 }
+[data-app-theme="light"] .toast[data-tone="error"] .icon {
+  color: var(--danger-text);
+}
 .message {
   flex: 1;
   min-width: 0;

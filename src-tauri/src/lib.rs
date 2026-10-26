@@ -23,6 +23,12 @@ pub struct Novus {
     pub content_gate: Arc<RwLock<()>>,
 }
 
+/// Keeps the library lock for the life of the process while startup recovery
+/// is pending. No library state is managed in that case, so library commands
+/// return a not-managed error instead of touching the library.
+#[allow(dead_code)]
+pub struct RecoveryHold(Storage);
+
 pub struct ZoomGuard(pub Arc<AtomicBool>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -63,20 +69,24 @@ pub fn run() {
         })
         .setup(move |app| {
             let storage = Storage::initialize(app.handle())?;
-            let db = Db::open(&storage.db_path(), || storage.remove_legacy_voice_data())?;
-            let covers_dir = storage.covers_dir();
-            app.manage(Novus {
-                storage: Arc::new(storage),
-                db: Arc::new(db),
-                content_gate: Arc::new(RwLock::new(())),
-            });
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn_blocking(move || {
-                let optimized = cover_image::optimize_managed_covers(&covers_dir);
-                if optimized > 0 {
-                    let _ = app_handle.emit("covers-optimized", optimized);
-                }
-            });
+            if storage.recovery_pending() {
+                app.manage(RecoveryHold(storage));
+            } else {
+                let db = Db::open(&storage.db_path(), || storage.remove_legacy_voice_data())?;
+                let covers_dir = storage.covers_dir();
+                app.manage(Novus {
+                    storage: Arc::new(storage),
+                    db: Arc::new(db),
+                    content_gate: Arc::new(RwLock::new(())),
+                });
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let optimized = cover_image::optimize_managed_covers(&covers_dir);
+                    if optimized > 0 {
+                        let _ = app_handle.emit("covers-optimized", optimized);
+                    }
+                });
+            }
 
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {

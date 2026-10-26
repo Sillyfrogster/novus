@@ -12,6 +12,19 @@ import {
 } from "./preferences";
 import { relaunchApp } from "./updater";
 
+/**
+ * Thrown by prepare while settings from an earlier restore are still unsaved. The About row
+ * branches on this class to pick its line, so the message is for the console only.
+ */
+export class PreviousSettingsPendingError extends Error {
+  constructor() {
+    super(
+      "Previous settings from an earlier restore are still unsaved; the new restore was not started",
+    );
+    this.name = "PreviousSettingsPendingError";
+  }
+}
+
 export interface BackupSummary {
   createdAt: number;
   bookCount: number;
@@ -79,6 +92,11 @@ async function opens(openLibrary: OpenLibrary): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** A marked record still owes the user a revert, so only a successful revert may clear it. */
+function clearResolvedRecovery(): void {
+  if (!preferenceRecoveryUnresolved()) clearPreferenceRecovery();
 }
 
 export function createLibraryCopy(
@@ -161,7 +179,7 @@ export function createLibraryCopy(
 
       try {
         await backend.finish();
-        clearPreferenceRecovery();
+        clearResolvedRecovery();
         return { ready: true };
       } catch {
         return blocked("Your library is restored, but Novus could not finish cleaning up.");
@@ -173,6 +191,8 @@ export function createLibraryCopy(
       const preferences = recoverPreferences();
       let cancelled = true;
       try {
+        // The library state is final after the rollback. The marked record now carries the
+        // remaining obligation, so the journal is discarded either way.
         await backend.cancel();
         if (preferences !== "failed") clearPreferenceRecovery();
       } catch {
@@ -196,7 +216,7 @@ export function createLibraryCopy(
     if (restore.state === "prepared") {
       try {
         await backend.cancel();
-        clearPreferenceRecovery();
+        clearResolvedRecovery();
       } catch {
         return blocked(
           "Novus could not cancel an unfinished restore. Restart Novus and try again.",
@@ -212,7 +232,12 @@ export function createLibraryCopy(
 
   return {
     save: () => backend.save(currentPreferences()),
-    prepare: (path: string) => backend.prepare(path),
+    prepare: async (path: string): Promise<RestoreSummary> => {
+      // Refusing here keeps the Rust side unchanged. A restore that started over an unresolved
+      // record would let applyRestoredPreferences overwrite the only copy of the previous settings.
+      if (preferenceRecoveryUnresolved()) throw new PreviousSettingsPendingError();
+      return backend.prepare(path);
+    },
     cancel: () => backend.cancel(),
     install: async (): Promise<boolean> => {
       await backend.commit();

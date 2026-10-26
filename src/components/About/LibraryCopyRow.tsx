@@ -3,13 +3,20 @@ import { ArchiveRestore, BookCopy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { reportPersistentError } from "../../lib/errorReport";
-import { libraryCopy, type RestoreSummary } from "../../lib/libraryCopy";
+import {
+  libraryCopy,
+  PreviousSettingsPendingError,
+  type RestoreSummary,
+} from "../../lib/libraryCopy";
 import { useLibrary } from "../../store/library";
 import { ConfirmDialog } from "../ConfirmDialog";
 import styles from "./AboutPanel.module.css";
 
 const EXPORT_FAILED = "Couldn't save the library copy. Your library is unchanged.";
 const RESTORE_PREPARE_FAILED = "Couldn't restore the library copy. Your library is unchanged.";
+// Shown when a restore is refused because settings from an earlier restore are still unsaved.
+const PREVIOUS_SETTINGS_PENDING =
+  "Novus could not save your previous settings from the last restore yet. Restart Novus, then try again.";
 
 type Activity = "idle" | "backingUp" | "preparing" | "cancelling" | "restarting";
 
@@ -113,9 +120,13 @@ export function LibraryCopyRow() {
     } catch (error) {
       reportPersistentError(RESTORE_PREPARE_FAILED, error);
       if (!mounted.current) return;
+      // Chosen by type, not by message text, so a changed message cannot change the copy shown.
       setNotice({
         tone: "error",
-        text: "Novus could not read this library copy. The file may be damaged or from a newer version of Novus.",
+        text:
+          error instanceof PreviousSettingsPendingError
+            ? PREVIOUS_SETTINGS_PENDING
+            : "Novus could not read this library copy. The file may be damaged or from a newer version of Novus.",
       });
     } finally {
       if (mounted.current) setActivity("idle");

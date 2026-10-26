@@ -35,7 +35,7 @@ Object.defineProperty(globalThis, "localStorage", {
 });
 
 const preferences = await import("../src/lib/preferences");
-const { createLibraryCopy } = await import("../src/lib/libraryCopy");
+const { createLibraryCopy, PreviousSettingsPendingError } = await import("../src/lib/libraryCopy");
 const { registerErrorSink } = await import("../src/lib/errorReport");
 
 beforeEach(() => {
@@ -359,4 +359,90 @@ describe("resume after a failed settings write", () => {
     expect(third.ready).toBe(true);
     expect(third.error).toBeUndefined();
   });
+
+  test("the failed branch keeps the record, marks it unresolved, and still discards the journal", async () => {
+    const { state, copy } = arrangeAppliedRestore();
+
+    const result = await withFailingPreferenceWritesAsync(() => copy.resume(async () => true));
+
+    expect(result.ready).toBe(true);
+    expect(result.error).toBe(
+      "Novus kept your current library, but could not restore its previous preferences.",
+    );
+    expect(preferences.preferenceRecoveryUnresolved()).toBe(true);
+    expect(preferences.preferenceRecoverySaved()).toBe(true);
+    expect(state.calls).toContain("cancel");
+    expect(preferences.currentPreferences().profileName).toBe("Restored library");
+  });
+
+  test("a second restore is refused before the backend is called while an unresolved record exists", async () => {
+    const { state, copy } = arrangeAppliedRestore();
+    await withFailingPreferenceWritesAsync(() => copy.resume(async () => true));
+
+    const error = await copy
+      .prepare("/backups/second.novus-backup")
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(PreviousSettingsPendingError);
+    expect(state.calls).not.toContain("prepare");
+    expect(preferences.preferenceRecoveryUnresolved()).toBe(true);
+    expect(preferences.preferenceRecoverySaved()).toBe(true);
+  });
+
+  test("applyRestoredPreferences refuses to write over an unresolved record, for any backup", async () => {
+    const { copy } = arrangeAppliedRestore();
+    await withFailingPreferenceWritesAsync(() => copy.resume(async () => true));
+
+    expect(() =>
+      preferences.applyRestoredPreferences(999, { profileName: "Other library" }),
+    ).toThrow("Previous preferences are still waiting to be restored");
+    expect(preferences.preferenceRecoveryUnresolved()).toBe(true);
+
+    expect(preferences.recoverPreviousPreferences()).toBe(true);
+    expect(preferences.currentPreferences().profileName).toBe("Original library");
+  });
+
+  test("finishing an installed restore keeps an unresolved record", async () => {
+    const { state, copy } = arrangeAppliedRestore();
+    await withFailingPreferenceWritesAsync(() => copy.resume(async () => true));
+    state.status = installedStatus(456, preferences.currentPreferences());
+
+    const result = await copy.resume(async () => true);
+
+    expect(result.ready).toBe(true);
+    expect(state.calls).toContain("finish");
+    expect(preferences.preferenceRecoverySaved()).toBe(true);
+    expect(preferences.preferenceRecoveryUnresolved()).toBe(true);
+  });
+
+  test("a damaged library copy still rejects with an ordinary error, not the pending-settings class", async () => {
+    const state: RestoreBackendState = { status: null, calls: [] };
+    const backend = {
+      ...restoreBackend(state),
+      prepare: async () => {
+        state.calls.push("prepare");
+        throw new Error("unreadable library copy");
+      },
+    };
+    const copy = createLibraryCopy(backend, () => undefined);
+
+    const error = await copy
+      .prepare("/backups/damaged.novus-backup")
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(PreviousSettingsPendingError);
+    expect(state.calls).toEqual(["prepare"]);
+  });
 });
+
+/** Applies a restore for backupCreatedAt 456, then sets a failed status for it. Nothing is resumed yet. */
+function arrangeAppliedRestore() {
+  preferences.replacePreferences({ profileName: "Original library" });
+  preferences.applyRestoredPreferences(456, { profileName: "Restored library" });
+  const state: RestoreBackendState = {
+    status: failedStatus(456, preferences.currentPreferences()),
+    calls: [],
+  };
+  return { state, copy: createLibraryCopy(restoreBackend(state), () => undefined) };
+}

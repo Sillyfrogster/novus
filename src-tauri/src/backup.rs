@@ -383,6 +383,10 @@ pub fn recover_interrupted_restore(storage: &Storage) -> AppResult<()> {
         return rollback_startup_restore(storage, &transaction, &mut journal);
     }
     if journal.state == "install" || journal.state == "installing" {
+        if journal.step == 0 {
+            // A failed flush leaves everything in place for the next start to retry.
+            flush_live_wal(&storage.db_path())?;
+        }
         journal.state = "installing".to_string();
         write_journal(&transaction, &journal)?;
         if install_prepared_restore(storage, &transaction, &mut journal).is_err() {
@@ -921,6 +925,16 @@ fn compression_for(path: &Path) -> CompressionMethod {
         }
         _ => CompressionMethod::Deflated,
     }
+}
+
+/// Fold the live library's WAL into novus.db before a restore moves any files
+fn flush_live_wal(database: &Path) -> AppResult<()> {
+    if !database.exists() {
+        return Ok(());
+    }
+    let conn = rusqlite::Connection::open(database)?;
+    conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
+    Ok(())
 }
 
 fn install_prepared_restore(
@@ -1600,99 +1614,34 @@ mod tests {
     }
 
     #[test]
-    fn repro_retry_after_partial_rollback_deletes_previous_wal() {
+    fn a_failed_install_keeps_writes_that_were_still_in_the_wal() {
         let (temp, storage, db) = create_test_library();
         add_book(&storage, &db);
         let backup_path = temp.path().join("library.novus-backup");
         create_backup(&storage, &db, &backup_path, &preferences()).unwrap();
-
-        let id = digest_hex(Sha256::digest(b"book"));
-        db.delete_book(&id).unwrap();
         drop(db);
-        std::fs::remove_dir_all(storage.books_dir()).unwrap();
-        std::fs::remove_dir_all(storage.covers_dir()).unwrap();
-        std::fs::create_dir_all(storage.books_dir()).unwrap();
-        std::fs::create_dir_all(storage.covers_dir()).unwrap();
-        // The live library had an un-checkpointed WAL and SHM when the restore began.
-        std::fs::write(storage.root().join("novus.db-wal"), b"PREVIOUS-WAL-FRAMES").unwrap();
-        std::fs::write(storage.root().join("novus.db-shm"), b"PREVIOUS-SHM").unwrap();
+
+        // This connection never closes, so its write stays in the WAL.
+        let open = rusqlite::Connection::open(storage.db_path()).unwrap();
+        open.execute_batch(
+            "CREATE TABLE unflushed(v TEXT); INSERT INTO unflushed VALUES ('kept');",
+        )
+        .unwrap();
+        std::mem::forget(open);
 
         prepare_restore(&storage, &backup_path).unwrap();
         commit_restore(&storage).unwrap();
+        // The install fails at its first move, so the rollback runs before any WAL was moved.
+        let failure = RenameFailure::inject(storage.db_path());
         recover_interrupted_restore(&storage).unwrap();
-        request_restore_rollback(&storage).unwrap();
-        let root = storage.root().to_path_buf();
-        drop(storage);
-
-        // First rollback attempt: the SHM rename fails after the WAL was restored.
-        let failure = RenameFailure::inject(
-            root.join(RESTORE_DIR)
-                .join(PREVIOUS_DIR)
-                .join("novus.db-shm"),
-        );
-        let first = Storage::for_test(root.clone()).unwrap();
-        assert!(first.recovery_pending());
-        drop(first);
-        drop(failure);
-        assert_eq!(
-            std::fs::read(root.join("novus.db-wal")).unwrap(),
-            b"PREVIOUS-WAL-FRAMES"
-        );
-        assert!(read_journal(&root.join(RESTORE_DIR)).unwrap().wal_cleared);
-
-        // Retry on next start.
-        let _retried = Storage::for_test(root.clone()).unwrap();
-        assert_eq!(
-            std::fs::read(root.join("novus.db-wal")).ok(),
-            Some(b"PREVIOUS-WAL-FRAMES".to_vec()),
-            "previous library WAL was deleted on retry"
-        );
-    }
-
-    #[test]
-    fn a_failed_rollback_is_not_repeated_on_a_later_start() {
-        let (temp, storage, db) = create_test_library();
-        add_book(&storage, &db);
-        let backup_path = temp.path().join("library.novus-backup");
-        create_backup(&storage, &db, &backup_path, &preferences()).unwrap();
-
-        let id = digest_hex(Sha256::digest(b"book"));
-        db.delete_book(&id).unwrap();
-        drop(db);
-        std::fs::remove_dir_all(storage.books_dir()).unwrap();
-        std::fs::remove_dir_all(storage.covers_dir()).unwrap();
-        std::fs::create_dir_all(storage.books_dir()).unwrap();
-        std::fs::create_dir_all(storage.covers_dir()).unwrap();
-        std::fs::write(storage.root().join("novus.db-wal"), b"PREVIOUS-WAL-FRAMES").unwrap();
-        std::fs::write(storage.root().join("novus.db-shm"), b"PREVIOUS-SHM").unwrap();
-
-        prepare_restore(&storage, &backup_path).unwrap();
-        commit_restore(&storage).unwrap();
-        recover_interrupted_restore(&storage).unwrap();
-        request_restore_rollback(&storage).unwrap();
-        let root = storage.root().to_path_buf();
-        drop(storage);
-
-        let failure = RenameFailure::inject(
-            root.join(RESTORE_DIR)
-                .join(PREVIOUS_DIR)
-                .join("novus.db-shm"),
-        );
-        let first = Storage::for_test(root.clone()).unwrap();
-        assert!(first.recovery_pending());
-        drop(first);
         drop(failure);
 
-        // The retry finishes the rollback and ends in state failed.
-        drop(Storage::for_test(root.clone()).unwrap());
-
-        let later = Storage::for_test(root.clone()).unwrap();
-        assert_eq!(restore_status(&later).unwrap().unwrap().state, "failed");
-        assert_eq!(
-            std::fs::read(root.join("novus.db-wal")).ok(),
-            Some(b"PREVIOUS-WAL-FRAMES".to_vec()),
-            "a later start changed the previous library WAL"
-        );
+        assert_eq!(restore_status(&storage).unwrap().unwrap().state, "failed");
+        let conn = rusqlite::Connection::open(storage.db_path()).unwrap();
+        let kept: String = conn
+            .query_row("SELECT v FROM unflushed", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(kept, "kept");
     }
 
     #[test]

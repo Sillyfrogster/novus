@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "test": "bun test",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "lint": "biome ci --error-on-warnings .",
+    "check:catch": "bun scripts/check-empty-catch.ts"
   },
   "dependencies": {
     "@fontsource-variable/bodoni-moda": "^5.2.7",

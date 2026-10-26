@@ -10,7 +10,7 @@ mod lock;
 mod publication;
 mod storage;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 
 use db::Db;
@@ -92,6 +92,7 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let locked = zoom_locked.clone();
                 let _ = window.with_webview(move |webview| {
+                    use std::sync::atomic::Ordering;
                     use webkit2gtk::WebViewExt;
                     let view = webview.inner();
                     view.connect_context_menu(|_, _, _, _| true);

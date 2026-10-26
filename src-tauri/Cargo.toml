@@ -13,8 +13,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "image-png"] }
-tauri-plugin-dialog = "2"
+tauri = { version = "=2.12.5", features = ["protocol-asset", "image-png"] }
+tauri-plugin-dialog = "=2.8.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["backup", "bundled"] }
@@ -39,5 +39,5 @@ windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 discord-rich-presence = "1.1"
 tauri-plugin-clipboard-manager = "2"
-tauri-plugin-process = "2"
-tauri-plugin-updater = "2"
+tauri-plugin-process = "=2.4.0"
+tauri-plugin-updater = "=2.14.0"

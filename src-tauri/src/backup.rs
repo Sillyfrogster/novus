@@ -1650,6 +1650,76 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_rollback_is_not_repeated_on_a_later_start() {
+        let (temp, storage, db) = create_test_library();
+        add_book(&storage, &db);
+        let backup_path = temp.path().join("library.novus-backup");
+        create_backup(&storage, &db, &backup_path, &preferences()).unwrap();
+
+        let id = digest_hex(Sha256::digest(b"book"));
+        db.delete_book(&id).unwrap();
+        drop(db);
+        std::fs::remove_dir_all(storage.books_dir()).unwrap();
+        std::fs::remove_dir_all(storage.covers_dir()).unwrap();
+        std::fs::create_dir_all(storage.books_dir()).unwrap();
+        std::fs::create_dir_all(storage.covers_dir()).unwrap();
+        std::fs::write(storage.root().join("novus.db-wal"), b"PREVIOUS-WAL-FRAMES").unwrap();
+        std::fs::write(storage.root().join("novus.db-shm"), b"PREVIOUS-SHM").unwrap();
+
+        prepare_restore(&storage, &backup_path).unwrap();
+        commit_restore(&storage).unwrap();
+        recover_interrupted_restore(&storage).unwrap();
+        request_restore_rollback(&storage).unwrap();
+        let root = storage.root().to_path_buf();
+        drop(storage);
+
+        let failure = RenameFailure::inject(
+            root.join(RESTORE_DIR)
+                .join(PREVIOUS_DIR)
+                .join("novus.db-shm"),
+        );
+        let first = Storage::for_test(root.clone()).unwrap();
+        assert!(first.recovery_pending());
+        drop(first);
+        drop(failure);
+
+        // The retry finishes the rollback and ends in state failed.
+        drop(Storage::for_test(root.clone()).unwrap());
+
+        let later = Storage::for_test(root.clone()).unwrap();
+        assert_eq!(restore_status(&later).unwrap().unwrap().state, "failed");
+        assert_eq!(
+            std::fs::read(root.join("novus.db-wal")).ok(),
+            Some(b"PREVIOUS-WAL-FRAMES".to_vec()),
+            "a later start changed the previous library WAL"
+        );
+    }
+
+    #[test]
+    fn a_journal_without_the_wal_flag_still_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let journal = serde_json::json!({
+            "version": 1,
+            "state": "rollingBack",
+            "step": 8,
+            "backupCreatedAt": 1,
+            "bookCount": 0,
+            "fileCount": 0,
+            "error": null,
+        });
+        std::fs::write(
+            dir.path().join(RESTORE_JOURNAL),
+            serde_json::to_vec(&journal).unwrap(),
+        )
+        .unwrap();
+
+        let read = read_journal(dir.path()).unwrap();
+
+        assert_eq!(read.state, "rollingBack");
+        assert!(!read.wal_cleared);
+    }
+
+    #[test]
     fn a_restore_that_is_not_acknowledged_rolls_back_on_the_next_start() {
         let (temp, storage, db) = create_test_library();
         add_book(&storage, &db);

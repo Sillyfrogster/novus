@@ -1621,13 +1621,18 @@ mod tests {
         create_backup(&storage, &db, &backup_path, &preferences()).unwrap();
         drop(db);
 
-        // This connection never closes, so its write stays in the WAL.
+        // Leave the write in the WAL but not in novus.db, as a crash would.
+        let wal = storage.root().join("novus.db-wal");
         let open = rusqlite::Connection::open(storage.db_path()).unwrap();
         open.execute_batch(
             "CREATE TABLE unflushed(v TEXT); INSERT INTO unflushed VALUES ('kept');",
         )
         .unwrap();
-        std::mem::forget(open);
+        let database_bytes = std::fs::read(storage.db_path()).unwrap();
+        let wal_bytes = std::fs::read(&wal).unwrap();
+        drop(open);
+        std::fs::write(storage.db_path(), database_bytes).unwrap();
+        std::fs::write(&wal, wal_bytes).unwrap();
 
         prepare_restore(&storage, &backup_path).unwrap();
         commit_restore(&storage).unwrap();

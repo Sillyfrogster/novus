@@ -57,170 +57,164 @@ export function CuratorRail({ books, storageRoot, onRead, onSearch }: CuratorRai
 
   return (
     <>
-    <aside className={styles.rail}>
-      {recent && (
-        <div className={styles.section}>
-          <div className={styles.label}>Continue</div>
-          <button
-            type="button"
-            className={styles.recentBtn}
-            title={`Continue reading ${recent.title}`}
-            onClick={() => onRead(recent)}
-          >
-            <div
-              className={styles.recentCover}
-              style={
-                coverUrl(recent, storageRoot)
-                  ? { backgroundImage: `url(${coverUrl(recent, storageRoot)})` }
-                  : undefined
-              }
-            />
-            <div className={styles.recentMeta}>
-              <div className={styles.recentTitle}>{recent.title}</div>
-              <div className={styles.recentPct}>
-                {Math.round(recent.progress * 100)}% READ
+      <aside className={styles.rail}>
+        {recent && (
+          <div className={styles.section}>
+            <div className={styles.label}>Continue</div>
+            <button
+              type="button"
+              className={styles.recentBtn}
+              title={`Continue reading ${recent.title}`}
+              onClick={() => onRead(recent)}
+            >
+              <div
+                className={styles.recentCover}
+                style={
+                  coverUrl(recent, storageRoot)
+                    ? { backgroundImage: `url(${coverUrl(recent, storageRoot)})` }
+                    : undefined
+                }
+              />
+              <div className={styles.recentMeta}>
+                <div className={styles.recentTitle}>{recent.title}</div>
+                <div className={styles.recentPct}>{Math.round(recent.progress * 100)}% READ</div>
               </div>
-            </div>
-          </button>
-        </div>
-      )}
-
-      <div className={styles.collections}>
-        <div className={styles.collHead}>
-          <span className={styles.collLabel}>Collections</span>
-          <div className={styles.collTools}>
-            <button
-              type="button"
-              className={styles.newBtn}
-              title="Search your library (⌘F)"
-              onClick={onSearch}
-            >
-              <Search size={12} strokeWidth={2} />
-            </button>
-            <button
-              type="button"
-              className={styles.newBtn}
-              title="New collection"
-              onClick={() => setNewOpen((v) => !v)}
-            >
-              <Plus size={13} strokeWidth={2} />
             </button>
           </div>
-        </div>
-
-        <button
-          type="button"
-          className={`${styles.collItem} ${selectedCollectionId === null ? styles.collActive : ""}`}
-          onClick={() => selectCollection(null)}
-        >
-          <span className={styles.collDot} />
-          <span className={styles.collName}>All Books</span>
-          <span className={styles.collCount}>{books.length}</span>
-        </button>
-
-        {collections.map((c) => (
-          <div key={c.id} className={styles.collRow}>
-            <button
-              type="button"
-              className={`${styles.collItem} ${selectedCollectionId === c.id ? styles.collActive : ""}`}
-              onClick={() => selectCollection(c.id)}
-            >
-              <span className={styles.collDot} />
-              <span className={styles.collName}>{c.name}</span>
-              <span className={styles.collCount}>{c.bookIds.length}</span>
-            </button>
-            <button
-              type="button"
-              className={styles.collDelete}
-              title="Delete collection"
-              onClick={() => setConfirmColl(c)}
-            >
-              <X size={12} strokeWidth={1.4} />
-            </button>
-          </div>
-        ))}
-
-        {newOpen && (
-          <label className={styles.newField}>
-            <span className={styles.newLabel}>New collection</span>
-            <input
-              autoFocus
-              className={styles.newInput}
-              placeholder="Name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") submitNew();
-                else if (e.key === "Escape") setNewOpen(false);
-              }}
-              onBlur={submitNew}
-            />
-          </label>
         )}
 
-        <button
-          type="button"
-          className={styles.collItem}
-          onClick={() => void openInsights()}
-        >
-          <BarChart3 size={13} strokeWidth={2} className={styles.collGlyph} />
-          <span className={styles.collName}>Insights</span>
-        </button>
-      </div>
-
-      <div className={styles.footer}>
-        <div className={styles.avatar}>
-          <Mark size={17} />
-        </div>
-        <div className={styles.footerMeta}>
-          {editingName ? (
-            <input
-              autoFocus
-              className={styles.nameInput}
-              aria-label="Profile name"
-              value={nameDraft}
-              onChange={(e) => setNameDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitName();
-                else if (e.key === "Escape") setEditingName(false);
-              }}
-              onBlur={commitName}
-            />
-          ) : (
-            <button
-              type="button"
-              className={styles.footerName}
-              title="Rename"
-              onClick={() => {
-                setNameDraft(profileName);
-                setEditingName(true);
-              }}
-            >
-              {profileName}
-            </button>
-          )}
-          <div className={styles.footerCount}>
-            {books.length} {books.length === 1 ? "VOLUME" : "VOLUMES"}
+        <div className={styles.collections}>
+          <div className={styles.collHead}>
+            <span className={styles.collLabel}>Collections</span>
+            <div className={styles.collTools}>
+              <button
+                type="button"
+                className={styles.newBtn}
+                title="Search your library (⌘F)"
+                onClick={onSearch}
+              >
+                <Search size={12} strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                className={styles.newBtn}
+                title="New collection"
+                onClick={() => setNewOpen((v) => !v)}
+              >
+                <Plus size={13} strokeWidth={2} />
+              </button>
+            </div>
           </div>
-        </div>
-        <button type="button" className={styles.signIn} title="Account sync — coming soon">
-          Sign in
-        </button>
-      </div>
-    </aside>
 
-    {confirmColl && (
-      <ConfirmDialog
-        title="Delete collection?"
-        body={`“${confirmColl.name}” will be deleted. Your books stay in your library.`}
-        confirmLabel="Delete"
-        onConfirm={() => {
-          removeCollection(confirmColl.id);
-          setConfirmColl(null);
-        }}
-        onCancel={() => setConfirmColl(null)}
-      />
-    )}
+          <button
+            type="button"
+            className={`${styles.collItem} ${selectedCollectionId === null ? styles.collActive : ""}`}
+            onClick={() => selectCollection(null)}
+          >
+            <span className={styles.collDot} />
+            <span className={styles.collName}>All Books</span>
+            <span className={styles.collCount}>{books.length}</span>
+          </button>
+
+          {collections.map((c) => (
+            <div key={c.id} className={styles.collRow}>
+              <button
+                type="button"
+                className={`${styles.collItem} ${selectedCollectionId === c.id ? styles.collActive : ""}`}
+                onClick={() => selectCollection(c.id)}
+              >
+                <span className={styles.collDot} />
+                <span className={styles.collName}>{c.name}</span>
+                <span className={styles.collCount}>{c.bookIds.length}</span>
+              </button>
+              <button
+                type="button"
+                className={styles.collDelete}
+                title="Delete collection"
+                onClick={() => setConfirmColl(c)}
+              >
+                <X size={12} strokeWidth={1.4} />
+              </button>
+            </div>
+          ))}
+
+          {newOpen && (
+            <label className={styles.newField}>
+              <span className={styles.newLabel}>New collection</span>
+              <input
+                autoFocus
+                className={styles.newInput}
+                placeholder="Name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitNew();
+                  else if (e.key === "Escape") setNewOpen(false);
+                }}
+                onBlur={submitNew}
+              />
+            </label>
+          )}
+
+          <button type="button" className={styles.collItem} onClick={() => void openInsights()}>
+            <BarChart3 size={13} strokeWidth={2} className={styles.collGlyph} />
+            <span className={styles.collName}>Insights</span>
+          </button>
+        </div>
+
+        <div className={styles.footer}>
+          <div className={styles.avatar}>
+            <Mark size={17} />
+          </div>
+          <div className={styles.footerMeta}>
+            {editingName ? (
+              <input
+                autoFocus
+                className={styles.nameInput}
+                aria-label="Profile name"
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitName();
+                  else if (e.key === "Escape") setEditingName(false);
+                }}
+                onBlur={commitName}
+              />
+            ) : (
+              <button
+                type="button"
+                className={styles.footerName}
+                title="Rename"
+                onClick={() => {
+                  setNameDraft(profileName);
+                  setEditingName(true);
+                }}
+              >
+                {profileName}
+              </button>
+            )}
+            <div className={styles.footerCount}>
+              {books.length} {books.length === 1 ? "VOLUME" : "VOLUMES"}
+            </div>
+          </div>
+          <button type="button" className={styles.signIn} title="Account sync — coming soon">
+            Sign in
+          </button>
+        </div>
+      </aside>
+
+      {confirmColl && (
+        <ConfirmDialog
+          title="Delete collection?"
+          body={`“${confirmColl.name}” will be deleted. Your books stay in your library.`}
+          confirmLabel="Delete"
+          onConfirm={() => {
+            removeCollection(confirmColl.id);
+            setConfirmColl(null);
+          }}
+          onCancel={() => setConfirmColl(null)}
+        />
+      )}
     </>
   );
 }

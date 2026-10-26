@@ -72,8 +72,7 @@ export function Insights() {
     ? insights.finishedCount + insights.readingCount + insights.unreadCount
     : 0;
   const hasSignal =
-    insights !== null &&
-    (insights.sessionCount30d > 0 || insights.bookTimes.length > 0);
+    insights !== null && (insights.sessionCount30d > 0 || insights.bookTimes.length > 0);
 
   return (
     <div className={styles.content}>
@@ -102,8 +101,8 @@ export function Insights() {
           </div>
         ) : !hasSignal ? (
           <p className={styles.quietNote}>
-            Insights build as you read. Nothing is tracked but time and pages,
-            and all of it stays on this machine.
+            Insights build as you read. Nothing is tracked but time and pages, and all of it stays
+            on this machine.
           </p>
         ) : (
           <div className={styles.sections}>
@@ -150,9 +149,7 @@ export function Insights() {
 
               <div className={styles.statRow}>
                 <div className={styles.stat}>
-                  <div className={styles.statNum}>
-                    {fmtDuration(insights.activeSeconds30d)}
-                  </div>
+                  <div className={styles.statNum}>{fmtDuration(insights.activeSeconds30d)}</div>
                   <div className={styles.statLbl}>time reading</div>
                 </div>
                 <div className={styles.stat}>
@@ -160,9 +157,7 @@ export function Insights() {
                   <div className={styles.statLbl}>pages read</div>
                 </div>
                 <div className={styles.stat}>
-                  <div className={styles.statNum}>
-                    {fmtDuration(insights.avgSessionSeconds30d)}
-                  </div>
+                  <div className={styles.statNum}>{fmtDuration(insights.avgSessionSeconds30d)}</div>
                   <div className={styles.statLbl}>average session</div>
                 </div>
                 <div className={styles.stat}>
@@ -192,9 +187,7 @@ export function Insights() {
                   {insights.pagesPerHour > 0 && (
                     <div className={styles.row}>
                       <span className={styles.rowKey}>Pages per hour</span>
-                      <span className={styles.rowVal}>
-                        {Math.round(insights.pagesPerHour)}
-                      </span>
+                      <span className={styles.rowVal}>{Math.round(insights.pagesPerHour)}</span>
                     </div>
                   )}
                 </div>
@@ -214,9 +207,7 @@ export function Insights() {
                         {b.title}
                         <span className={styles.rowAuthor}>{b.author}</span>
                       </span>
-                      <span className={styles.rowVal}>
-                        {fmtDuration(b.activeSeconds)}
-                      </span>
+                      <span className={styles.rowVal}>{fmtDuration(b.activeSeconds)}</span>
                     </div>
                   ))}
                 </div>
@@ -239,9 +230,7 @@ export function Insights() {
                           {Math.round(b.progress * 100)}% read
                         </span>
                       </span>
-                      <span className={styles.rowVal}>
-                        about {fmtDuration(b.secondsLeft)}
-                      </span>
+                      <span className={styles.rowVal}>about {fmtDuration(b.secondsLeft)}</span>
                     </div>
                   ))}
                 </div>
@@ -275,15 +264,12 @@ export function Insights() {
                     />
                   )}
                   {insights.unreadCount > 0 && (
-                    <span
-                      className={styles.segUnread}
-                      style={{ flexGrow: insights.unreadCount }}
-                    />
+                    <span className={styles.segUnread} style={{ flexGrow: insights.unreadCount }} />
                   )}
                 </div>
                 <p className={styles.shelfCaption}>
-                  {insights.finishedCount} finished · {insights.readingCount}{" "}
-                  reading · {insights.unreadCount} unread
+                  {insights.finishedCount} finished · {insights.readingCount} reading ·{" "}
+                  {insights.unreadCount} unread
                 </p>
               </section>
             )}

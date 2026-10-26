@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  createHighlightsStore,
-  type HighlightsBackend,
-} from "../src/store/highlights";
+import { createHighlightsStore, type HighlightsBackend } from "../src/store/highlights";
 import type { Highlight } from "../src/lib/types";
 
 function highlight(id: string, bookId: string): Highlight {

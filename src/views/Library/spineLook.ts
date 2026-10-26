@@ -18,7 +18,7 @@ export function spineLook(book: Book): SpineLook {
   const h = hash(book.id);
   const hue = 205 + (h % 40);
   const sat = 10 + ((h >> 3) % 12);
-  const light = ((h >> 6) % 100) < 22;
+  const light = (h >> 6) % 100 < 22;
   const lum = light ? 80 + ((h >> 9) % 8) : 14 + ((h >> 9) % 12);
 
   const bg = `hsl(${hue} ${sat}% ${lum}%)`;

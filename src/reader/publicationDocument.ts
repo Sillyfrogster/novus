@@ -24,9 +24,7 @@ export interface PublicationSectionSource {
 
 function resourcePolicySource(resourceRoot: string): string {
   const root = new URL(resourceRoot);
-  return root.protocol === "http:" || root.protocol === "https:"
-    ? root.origin
-    : root.protocol;
+  return root.protocol === "http:" || root.protocol === "https:" ? root.origin : root.protocol;
 }
 
 function parseSectionDocument(markup: string, mediaType: string) {
@@ -122,9 +120,7 @@ export function createPublicationSectionSource({
   const toResourceUrl = (reference: string): string | null => {
     if (!reference || reference.startsWith("#")) return null;
     const path = resolvePublicationPath(sectionPath, reference);
-    return path
-      ? buildPublicationResourceUrl(resourceRoot, sessionId, path)
-      : null;
+    return path ? buildPublicationResourceUrl(resourceRoot, sessionId, path) : null;
   };
   const rewriteAttribute = (element: Element, attribute: string) => {
     const reference = element.getAttribute(attribute);
@@ -167,10 +163,8 @@ export function createPublicationSectionSource({
   }
   for (const element of document.querySelectorAll("style")) {
     if (element.textContent) {
-      element.textContent = rewritePublicationCss(
-        element.textContent,
-        sectionPath,
-        (path) => buildPublicationResourceUrl(resourceRoot, sessionId, path),
+      element.textContent = rewritePublicationCss(element.textContent, sectionPath, (path) =>
+        buildPublicationResourceUrl(resourceRoot, sessionId, path),
       );
     }
   }
@@ -188,9 +182,7 @@ export function createPublicationSectionSource({
 
   installSectionPolicy(document, resourceRoot);
   const serialized = new XMLSerializer().serializeToString(document);
-  const url = URL.createObjectURL(
-    new Blob([serialized], { type: parsed.mediaType }),
-  );
+  const url = URL.createObjectURL(new Blob([serialized], { type: parsed.mediaType }));
   let revoked = false;
 
   return {

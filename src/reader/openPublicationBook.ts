@@ -27,10 +27,7 @@ function splitHref(href: string): [string, string | null] {
 function hrefKey(href: string): string {
   const [beforeFragment] = splitHref(href);
   const questionAt = beforeFragment.indexOf("?");
-  const path =
-    questionAt < 0
-      ? beforeFragment
-      : beforeFragment.slice(0, questionAt);
+  const path = questionAt < 0 ? beforeFragment : beforeFragment.slice(0, questionAt);
 
   try {
     return decodeURI(path.replace(/^\/+/, ""));
@@ -49,10 +46,7 @@ function decodeFragment(fragment: string | null): string | null {
 }
 
 function findFragment(document: Document, id: string): Node | null {
-  return (
-    document.getElementById(id) ??
-    document.querySelector(`[name="${CSS.escape(id)}"]`)
-  );
+  return document.getElementById(id) ?? document.querySelector(`[name="${CSS.escape(id)}"]`);
 }
 
 function createSection(
@@ -88,10 +82,7 @@ function createSection(
           const requestedGeneration = generation;
           const promise = loadPublicationSection(sessionId, index)
             .then((loaded) => {
-              if (
-                loaded.index !== index ||
-                hrefKey(loaded.href) !== hrefKey(description.href)
-              ) {
+              if (loaded.index !== index || hrefKey(loaded.href) !== hrefKey(description.href)) {
                 throw new Error("The publication returned the wrong section");
               }
 
@@ -149,27 +140,14 @@ export async function openPublicationBook(
   const opened = await openPublication(bookId);
 
   try {
-    const bridge = createPublicationCfiBridge(
-      opened.package,
-      opened.packagePath,
-      opened.sections,
-    );
+    const bridge = createPublicationCfiBridge(opened.package, opened.packagePath, opened.sections);
     const resourceRoot = publicationResourceRoot();
     const sectionIndex = new Map(
-      bridge.sections.map((section, index) => [
-        hrefKey(section.href),
-        index,
-      ]),
+      bridge.sections.map((section, index) => [hrefKey(section.href), index]),
     );
     let closed = false;
     const managedSections = bridge.sections.map((section, index) =>
-      createSection(
-        section,
-        index,
-        opened.session,
-        resourceRoot,
-        () => closed,
-      ),
+      createSection(section, index, opened.session, resourceRoot, () => closed),
     );
     const sections = managedSections.map(({ section }) => section);
 
@@ -185,8 +163,7 @@ export async function openPublicationBook(
         ? { index }
         : {
             index,
-            anchor: (document) =>
-              findFragment(document, fragment) ?? document.body,
+            anchor: (document) => findFragment(document, fragment) ?? document.body,
           };
     };
 

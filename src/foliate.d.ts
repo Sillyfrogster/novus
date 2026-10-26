@@ -17,7 +17,9 @@ declare module "*/foliate-js/progress.js" {
     init(opts: {
       toc: unknown[];
       ids: string[];
-      splitHref: (href: string | undefined) => Promise<[string, string | null]> | [string, string | null];
+      splitHref: (
+        href: string | undefined,
+      ) => Promise<[string, string | null]> | [string, string | null];
       getFragment: (doc: Document, id: string | null) => Node | null;
     }): Promise<void>;
     getProgress(index: number, range?: Range): { label?: string } | null | undefined;

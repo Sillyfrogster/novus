@@ -25,11 +25,7 @@ export function WhyBox({ onSave, onDismiss }: WhyBoxProps) {
   };
 
   return (
-    <dialog
-      ref={dialogRef}
-      className={styles.wrap}
-      aria-label="Add a note to this highlight"
-    >
+    <dialog ref={dialogRef} className={styles.wrap} aria-label="Add a note to this highlight">
       <label className={styles.label} htmlFor="highlight-note">
         Note
       </label>

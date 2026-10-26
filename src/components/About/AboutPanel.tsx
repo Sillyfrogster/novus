@@ -52,8 +52,8 @@ export function AboutPanel() {
       </header>
 
       <p className={styles.tagline}>
-        A quiet, careful home for the books you keep. Free to use, supported by readers who
-        choose to give.
+        A quiet, careful home for the books you keep. Free to use, supported by readers who choose
+        to give.
       </p>
 
       {isDesktop && (

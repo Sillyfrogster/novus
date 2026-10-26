@@ -4,7 +4,11 @@ const PLACEHOLDER_COVERS = 7;
 
 export function LibrarySkeleton() {
   return (
-    <div className={`${styles.layout} ${styles.librarySkeleton}`} role="status" aria-label="Loading library">
+    <div
+      className={`${styles.layout} ${styles.librarySkeleton}`}
+      role="status"
+      aria-label="Loading library"
+    >
       <aside className={styles.skeletonRail} aria-hidden="true">
         <span className={styles.skeletonLabel} />
         <div className={styles.skeletonRecent}>

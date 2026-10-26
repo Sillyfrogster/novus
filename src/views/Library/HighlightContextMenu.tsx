@@ -30,14 +30,8 @@ function clampMenuPosition(
   viewportHeight: number,
 ) {
   return {
-    left: Math.max(
-      VIEWPORT_GAP,
-      Math.min(x, viewportWidth - menuWidth - VIEWPORT_GAP),
-    ),
-    top: Math.max(
-      VIEWPORT_GAP,
-      Math.min(y, viewportHeight - menuHeight - VIEWPORT_GAP),
-    ),
+    left: Math.max(VIEWPORT_GAP, Math.min(x, viewportWidth - menuWidth - VIEWPORT_GAP)),
+    top: Math.max(VIEWPORT_GAP, Math.min(y, viewportHeight - menuHeight - VIEWPORT_GAP)),
   };
 }
 
@@ -61,9 +55,7 @@ export function HighlightContextMenu({
 
   useEffect(() => {
     const h = ref.current?.offsetHeight ?? 0;
-    setPos(
-      clampMenuPosition(x, y, menuWidth, h, window.innerWidth, window.innerHeight),
-    );
+    setPos(clampMenuPosition(x, y, menuWidth, h, window.innerWidth, window.innerHeight));
   }, [menuWidth, ref, x, y]);
 
   const run = (fn: () => void) => () => {
@@ -115,12 +107,7 @@ export function HighlightContextMenu({
         items[next]?.focus();
       }}
     >
-      <button
-        type="button"
-        className={styles.item}
-        onClick={run(onDetails)}
-        role="menuitem"
-      >
+      <button type="button" className={styles.item} onClick={run(onDetails)} role="menuitem">
         <Info size={15} strokeWidth={1.7} />
         Details
       </button>
@@ -130,21 +117,11 @@ export function HighlightContextMenu({
       </button>
       {isDesktop && (
         <>
-          <button
-            type="button"
-            className={styles.item}
-            onClick={run(onCopyImage)}
-            role="menuitem"
-          >
+          <button type="button" className={styles.item} onClick={run(onCopyImage)} role="menuitem">
             <Image size={15} strokeWidth={1.7} />
             Copy as image
           </button>
-          <button
-            type="button"
-            className={styles.item}
-            onClick={run(onSaveImage)}
-            role="menuitem"
-          >
+          <button type="button" className={styles.item} onClick={run(onSaveImage)} role="menuitem">
             <ImageDown size={15} strokeWidth={1.7} />
             Save image…
           </button>

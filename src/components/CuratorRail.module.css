@@ -99,7 +99,9 @@
   background: transparent;
   color: var(--faint);
   cursor: pointer;
-  transition: color 0.14s ease, background 0.14s ease;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease;
 }
 .newBtn:hover {
   color: var(--ink);
@@ -124,7 +126,9 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.14s ease, background 0.14s ease;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease;
 }
 .collItem:hover {
   color: var(--ink);
@@ -172,7 +176,9 @@
   color: var(--faint);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.14s ease, color 0.14s ease;
+  transition:
+    opacity 0.14s ease,
+    color 0.14s ease;
 }
 .collRow:hover .collDelete {
   opacity: 1;
@@ -280,7 +286,9 @@
   font-weight: 600;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.16s ease, border-color 0.16s ease;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease;
 }
 .signIn:hover {
   color: var(--ink);

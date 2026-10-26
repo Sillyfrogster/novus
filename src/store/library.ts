@@ -120,9 +120,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
         get().storageRoot ? Promise.resolve(get().storageRoot) : storageRoot(),
         listCollections(),
       ]);
-      const selectedCollectionId = collections.some(
-        (c) => c.id === get().selectedCollectionId,
-      )
+      const selectedCollectionId = collections.some((c) => c.id === get().selectedCollectionId)
         ? get().selectedCollectionId
         : null;
       set({ books, storageRoot: root, collections, selectedCollectionId, loading: false });

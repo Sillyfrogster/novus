@@ -58,7 +58,9 @@
   font-family: var(--font-ui);
   font-size: 12px;
   cursor: pointer;
-  transition: color 0.14s ease, background 0.14s ease;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease;
 }
 .skip:hover {
   color: var(--ink);

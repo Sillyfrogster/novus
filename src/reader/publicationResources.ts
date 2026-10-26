@@ -75,10 +75,7 @@ function isExternalReference(reference: string): boolean {
   return URI_SCHEME.test(reference) || reference.startsWith("//");
 }
 
-export function resolvePublicationPath(
-  sectionPath: string,
-  reference: string,
-): string | null {
+export function resolvePublicationPath(sectionPath: string, reference: string): string | null {
   if (!reference || isExternalReference(reference)) return null;
 
   const sectionSegments = canonicalSectionSegments(sectionPath);
@@ -109,11 +106,7 @@ export function resolvePublicationPath(
   return encodeReferenceSuffix(resolved.join("/"), query, fragment);
 }
 
-export function buildPublicationResourceUrl(
-  root: string,
-  sessionId: string,
-  path: string,
-): string {
+export function buildPublicationResourceUrl(root: string, sessionId: string, path: string): string {
   const rootUrl = new URL(root);
   if (rootUrl.search || rootUrl.hash) {
     throw new TypeError("The resource root cannot include a query or fragment");
@@ -158,10 +151,7 @@ function consumeCssTrivia(css: string, start: number): number {
   return cursor;
 }
 
-function readCssEscape(
-  css: string,
-  start: number,
-): { end: number; value: string } | null {
+function readCssEscape(css: string, start: number): { end: number; value: string } | null {
   let cursor = start + 1;
   if (cursor >= css.length) return null;
 
@@ -259,9 +249,7 @@ function readCssUrl(css: string, start: number): CssUrl | null {
     }
     if (isCssWhitespace(character) || css.startsWith("/*", cursor)) {
       trailingTrivia = true;
-      cursor = css.startsWith("/*", cursor)
-        ? skipCssComment(css, cursor)
-        : cursor + 1;
+      cursor = css.startsWith("/*", cursor) ? skipCssComment(css, cursor) : cursor + 1;
       continue;
     }
     if (trailingTrivia || character === "'" || character === '"' || character === "(") {
@@ -396,10 +384,7 @@ export function rewritePublicationSrcset(
   let cursor = 0;
 
   while (cursor < srcset.length) {
-    while (
-      cursor < srcset.length &&
-      (isCssWhitespace(srcset[cursor]!) || srcset[cursor] === ",")
-    ) {
+    while (cursor < srcset.length && (isCssWhitespace(srcset[cursor]!) || srcset[cursor] === ",")) {
       cursor += 1;
     }
     if (cursor >= srcset.length) break;

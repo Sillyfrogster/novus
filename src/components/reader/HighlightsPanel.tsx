@@ -76,9 +76,7 @@ export function HighlightsPanel({ onJump, onClose }: HighlightsPanelProps) {
           {HIGHLIGHT_COLOR_KEYS.map((key) => (
             <div key={key} className={styles.manageRow}>
               <label className={styles.swatchLabel} title="Change color">
-                <span className={styles.visuallyHidden}>
-                  Color for {colors[key].label}
-                </span>
+                <span className={styles.visuallyHidden}>Color for {colors[key].label}</span>
                 <span className={styles.swatch} style={{ background: colors[key].color }} />
                 <input
                   type="color"

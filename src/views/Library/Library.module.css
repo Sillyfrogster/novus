@@ -28,11 +28,7 @@
   content: "";
   position: absolute;
   inset: -60px;
-  background: radial-gradient(
-    circle,
-    rgba(207, 216, 228, 0.1),
-    transparent 70%
-  );
+  background: radial-gradient(circle, rgba(207, 216, 228, 0.1), transparent 70%);
   pointer-events: none;
 }
 
@@ -402,11 +398,7 @@
   width: 92%;
   height: 9px;
   transform: translateX(-50%);
-  background: radial-gradient(
-    ellipse 50% 60% at 50% 20%,
-    rgba(0, 0, 0, 0.3),
-    transparent 70%
-  );
+  background: radial-gradient(ellipse 50% 60% at 50% 20%, rgba(0, 0, 0, 0.3), transparent 70%);
   pointer-events: none;
   transition:
     transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -414,11 +406,7 @@
     filter 0.34s ease;
 }
 [data-app-theme="light"] .card::after {
-  background: radial-gradient(
-    ellipse 50% 60% at 50% 20%,
-    rgba(0, 0, 0, 0.12),
-    transparent 70%
-  );
+  background: radial-gradient(ellipse 50% 60% at 50% 20%, rgba(0, 0, 0, 0.12), transparent 70%);
 }
 
 .card:hover {

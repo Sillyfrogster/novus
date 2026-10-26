@@ -141,9 +141,7 @@ export function DetailOverview({ book, onRead, onRemove }: DetailOverviewProps) 
                     onClick={() => onRead(book, entry.href)}
                     disabled={!entry.href}
                   >
-                    <span className={styles.tocNum}>
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
+                    <span className={styles.tocNum}>{String(index + 1).padStart(2, "0")}</span>
                     <span className={styles.tocLabel}>{entry.label}</span>
                   </button>
                 </li>

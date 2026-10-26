@@ -187,10 +187,7 @@ function parsedAt(storage: Storage, key: string): unknown {
 }
 
 function persistPreferences(preferences: PreferencesSnapshot): void {
-  browserStorage()?.setItem(
-    PREFERENCES_KEY,
-    JSON.stringify({ version: VERSION, preferences }),
-  );
+  browserStorage()?.setItem(PREFERENCES_KEY, JSON.stringify({ version: VERSION, preferences }));
 }
 
 function loadPreferences(): PreferencesSnapshot {
@@ -201,8 +198,7 @@ function loadPreferences(): PreferencesSnapshot {
     const preferences = decodePreferences(parsedAt(storage, PREFERENCES_KEY));
     try {
       persistPreferences(preferences);
-    } catch {
-    }
+    } catch {}
     return preferences;
   }
 
@@ -230,8 +226,7 @@ function loadPreferences(): PreferencesSnapshot {
   try {
     persistPreferences(preferences);
     for (const key of legacyKeys) storage.removeItem(key);
-  } catch {
-  }
+  } catch {}
   return preferences;
 }
 
@@ -271,10 +266,7 @@ export function setContinueShelfOpen(continueShelfOpen: boolean): void {
   update({ continueShelfOpen });
 }
 
-function updateHighlightColor(
-  key: HighlightColorKey,
-  patch: Partial<HighlightColor>,
-): void {
+function updateHighlightColor(key: HighlightColorKey, patch: Partial<HighlightColor>): void {
   const current = usePreferences.getState().highlightColors;
   update({
     highlightColors: highlightColors({

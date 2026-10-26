@@ -54,8 +54,8 @@ const tauriBackend: HighlightsBackend = {
 function order(highlights: Highlight[]): Highlight[] {
   return [...highlights].sort((a, b) => {
     if (a.sectionIndex !== b.sectionIndex) return a.sectionIndex - b.sectionIndex;
-    const location = (a.location ?? Number.MAX_SAFE_INTEGER) -
-      (b.location ?? Number.MAX_SAFE_INTEGER);
+    const location =
+      (a.location ?? Number.MAX_SAFE_INTEGER) - (b.location ?? Number.MAX_SAFE_INTEGER);
     return location || a.createdAt - b.createdAt;
   });
 }
@@ -135,11 +135,7 @@ export function createHighlightsStore(backend: HighlightsBackend) {
         const payload: NewHighlight = { id, note: null, ...input };
         try {
           const saved = await run(() => backend.add(payload));
-          change(
-            input.bookId,
-            (highlights) => [...highlights, saved],
-            true,
-          );
+          change(input.bookId, (highlights) => [...highlights, saved], true);
           return saved;
         } catch {
           return null;
@@ -170,9 +166,7 @@ export function createHighlightsStore(backend: HighlightsBackend) {
         if (!removed) return null;
         try {
           await run(() => backend.remove(id));
-          change(bookId, (highlights) =>
-            highlights.filter((highlight) => highlight.id !== id),
-          );
+          change(bookId, (highlights) => highlights.filter((highlight) => highlight.id !== id));
           return removed;
         } catch {
           return null;

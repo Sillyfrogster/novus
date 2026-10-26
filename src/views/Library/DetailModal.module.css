@@ -2,7 +2,9 @@
   background: rgba(6, 6, 8, 0.62);
   backdrop-filter: blur(3px);
   animation: nvFade 0.24s ease both;
-  transition: background 0.24s ease, backdrop-filter 0.24s ease;
+  transition:
+    background 0.24s ease,
+    backdrop-filter 0.24s ease;
 }
 .modal[data-closing="true"]::backdrop {
   background: transparent;
@@ -26,7 +28,9 @@
   z-index: 151;
   box-shadow: 0 40px 100px -30px rgba(0, 0, 0, 0.8);
   transform-origin: 50% 50%;
-  transition: transform 0.36s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.26s ease;
+  transition:
+    transform 0.36s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.26s ease;
   will-change: transform, opacity;
 }
 .modal[open] {
@@ -182,7 +186,9 @@
   text-align: left;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 .tocItem:last-child {
   border-bottom: none;
@@ -349,7 +355,9 @@
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  transition: color 0.18s ease, background 0.18s ease;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease;
 }
 .removeBtn:hover {
   color: var(--danger);
@@ -367,7 +375,9 @@
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  transition: color 0.18s ease, background 0.18s ease;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease;
 }
 .resetBtn:hover {
   color: var(--text);
@@ -451,7 +461,9 @@
   color: var(--muted);
   cursor: pointer;
   border-radius: 7px;
-  transition: color 0.14s ease, background 0.14s ease;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease;
 }
 .hlMore {
   position: relative;
@@ -468,7 +480,9 @@
   background: transparent;
   color: var(--faint);
   cursor: pointer;
-  transition: color 0.14s ease, background 0.14s ease;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease;
 }
 .hlMore::after {
   content: "";

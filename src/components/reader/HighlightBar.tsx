@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import {
-  HIGHLIGHT_COLOR_KEYS,
-  type HighlightColors,
-} from "../../lib/preferences";
+import { HIGHLIGHT_COLOR_KEYS, type HighlightColors } from "../../lib/preferences";
 import type { HighlightColorKey } from "../../lib/types";
 import { placeHighlightBar } from "./highlightBarPosition";
 import styles from "./HighlightBar.module.css";

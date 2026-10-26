@@ -92,11 +92,26 @@ export const CHANGELOG: Release[] = [
     date: "2026-07-05",
     title: "Highlight and look back",
     notes: [
-      { kind: "new", text: "Highlight passages as you read. Pick a color, add a note on why it caught you, and they hold their place as the book reflows." },
-      { kind: "new", text: "A highlights panel grouped by chapter, so you can jump straight to any passage. Copy one, save it as an image, or export a book's highlights to Markdown or Obsidian." },
-      { kind: "new", text: "Insights: your reading time, pages read, current streak, and pace, with a day-by-day view of the last month." },
-      { kind: "new", text: "A Continue Reading shelf that keeps the books you're partway through within reach." },
-      { kind: "improved", text: "Shelves now show upright cover cards instead of hard-to-read vertical spines." },
+      {
+        kind: "new",
+        text: "Highlight passages as you read. Pick a color, add a note on why it caught you, and they hold their place as the book reflows.",
+      },
+      {
+        kind: "new",
+        text: "A highlights panel grouped by chapter, so you can jump straight to any passage. Copy one, save it as an image, or export a book's highlights to Markdown or Obsidian.",
+      },
+      {
+        kind: "new",
+        text: "Insights: your reading time, pages read, current streak, and pace, with a day-by-day view of the last month.",
+      },
+      {
+        kind: "new",
+        text: "A Continue Reading shelf that keeps the books you're partway through within reach.",
+      },
+      {
+        kind: "improved",
+        text: "Shelves now show upright cover cards instead of hard-to-read vertical spines.",
+      },
     ],
   },
   {
@@ -104,8 +119,14 @@ export const CHANGELOG: Release[] = [
     date: "2026-06-30",
     title: "Reader fixes",
     notes: [
-      { kind: "fixed", text: "Page turns could dead-end at the end of a chapter instead of moving on. Fixed." },
-      { kind: "fixed", text: "Books could still override your theme, typeface, and font size. They can't anymore." },
+      {
+        kind: "fixed",
+        text: "Page turns could dead-end at the end of a chapter instead of moving on. Fixed.",
+      },
+      {
+        kind: "fixed",
+        text: "Books could still override your theme, typeface, and font size. They can't anymore.",
+      },
       { kind: "new", text: "Visible page-turn buttons on either side of the page." },
     ],
   },
@@ -114,8 +135,14 @@ export const CHANGELOG: Release[] = [
     date: "2026-06-29",
     title: "Our own renderer",
     notes: [
-      { kind: "improved", text: "Rebuilt the reader on our own rendering engine. Your theme, fonts, and spacing now hold on every book." },
-      { kind: "fixed", text: "Some books ignored the reader's styling and showed their own background. Gone." },
+      {
+        kind: "improved",
+        text: "Rebuilt the reader on our own rendering engine. Your theme, fonts, and spacing now hold on every book.",
+      },
+      {
+        kind: "fixed",
+        text: "Some books ignored the reader's styling and showed their own background. Gone.",
+      },
       { kind: "new", text: "Reset a book's reading progress from its details." },
       { kind: "new", text: "Chapter count shown in book details." },
     ],
@@ -125,8 +152,14 @@ export const CHANGELOG: Release[] = [
     date: "2026-06-26",
     title: "First light",
     notes: [
-      { kind: "new", text: "Import EPUBs by drag-and-drop or the file picker into a managed library." },
-      { kind: "new", text: "A focused reader that remembers where you left off, with a table of contents." },
+      {
+        kind: "new",
+        text: "Import EPUBs by drag-and-drop or the file picker into a managed library.",
+      },
+      {
+        kind: "new",
+        text: "A focused reader that remembers where you left off, with a table of contents.",
+      },
       { kind: "new", text: "Collections, reading stats, and a curator rail for your shelf." },
     ],
   },

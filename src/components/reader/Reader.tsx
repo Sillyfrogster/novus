@@ -178,7 +178,12 @@ export function Reader() {
           >
             <Highlighter size={17} strokeWidth={1.8} />
           </button>
-          <button type="button" className={styles.aaBtn} title="Display settings" onClick={() => setSettingsOpen(true)}>
+          <button
+            type="button"
+            className={styles.aaBtn}
+            title="Display settings"
+            onClick={() => setSettingsOpen(true)}
+          >
             Aa
           </button>
         </div>
@@ -228,12 +233,7 @@ export function Reader() {
           <div className={styles.progressFill} style={{ width: `${pct}%` }} />
         </div>
         <span className={styles.pct}>{pct}%</span>
-        <button
-          type="button"
-          className={styles.iconBtn}
-          onClick={() => turn("next")}
-          title="Next"
-        >
+        <button type="button" className={styles.iconBtn} onClick={() => turn("next")} title="Next">
           <ChevronRight size={16} strokeWidth={1.8} />
         </button>
       </div>
@@ -249,7 +249,12 @@ export function Reader() {
           <div className={styles.toc}>
             <div className={styles.tocHead}>
               Contents
-              <button type="button" className={styles.iconBtn} onClick={() => setTocOpen(false)} title="Close">
+              <button
+                type="button"
+                className={styles.iconBtn}
+                onClick={() => setTocOpen(false)}
+                title="Close"
+              >
                 <X size={14} strokeWidth={1.4} />
               </button>
             </div>

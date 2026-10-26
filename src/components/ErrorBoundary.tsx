@@ -48,9 +48,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         >
           Something broke
         </div>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: 28 }}>
-          Novus hit an error
-        </div>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 28 }}>Novus hit an error</div>
         <pre
           style={{
             maxWidth: "42rem",

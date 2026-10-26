@@ -24,7 +24,13 @@ export function UpdateBanner() {
           Novus {available.version} is ready — <span className={styles.cta}>see what's new</span>
         </span>
       </button>
-      <button type="button" className={styles.close} onClick={dismiss} title="Dismiss" aria-label="Dismiss">
+      <button
+        type="button"
+        className={styles.close}
+        onClick={dismiss}
+        title="Dismiss"
+        aria-label="Dismiss"
+      >
         <X size={13} strokeWidth={1.5} />
       </button>
     </div>

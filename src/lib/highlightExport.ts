@@ -91,7 +91,10 @@ export async function saveTextFile(
   ext: string,
 ): Promise<boolean> {
   if (!isDesktop) return false;
-  const path = await save({ defaultPath: defaultName, filters: [{ name: filterName, extensions: [ext] }] });
+  const path = await save({
+    defaultPath: defaultName,
+    filters: [{ name: filterName, extensions: [ext] }],
+  });
   if (!path) return false;
   await writeFile(path, new TextEncoder().encode(content));
   return true;
@@ -99,7 +102,10 @@ export async function saveTextFile(
 
 export async function saveImageFile(blob: Blob, defaultName: string): Promise<boolean> {
   if (!isDesktop) return false;
-  const path = await save({ defaultPath: defaultName, filters: [{ name: "PNG image", extensions: ["png"] }] });
+  const path = await save({
+    defaultPath: defaultName,
+    filters: [{ name: "PNG image", extensions: ["png"] }],
+  });
   if (!path) return false;
   await writeFile(path, new Uint8Array(await blob.arrayBuffer()));
   return true;

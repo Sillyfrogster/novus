@@ -48,7 +48,9 @@
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.14s ease, background 0.14s ease;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease;
 }
 .close::after {
   content: "";

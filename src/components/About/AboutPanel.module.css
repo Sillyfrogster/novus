@@ -71,7 +71,9 @@
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.14s ease, background 0.14s ease;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease;
 }
 .close::after {
   content: "";
@@ -144,7 +146,10 @@
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.16s ease, filter 0.16s ease, opacity 0.16s ease;
+  transition:
+    background 0.16s ease,
+    filter 0.16s ease,
+    opacity 0.16s ease;
 }
 .primaryBtn::after,
 .ghostBtn::after {

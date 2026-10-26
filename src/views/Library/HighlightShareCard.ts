@@ -138,7 +138,9 @@ export async function renderHighlightCard(h: Highlight, book: Book): Promise<HTM
   // Attribution.
   ctx.fillStyle = FAINT;
   ctx.font = `400 ${attrSize}px ${FONT_SERIF}`;
-  attrLines.forEach((line, i) => ctx.fillText(line, PAD, attrTop + i * (attrSize * 1.5) + attrSize));
+  attrLines.forEach((line, i) =>
+    ctx.fillText(line, PAD, attrTop + i * (attrSize * 1.5) + attrSize),
+  );
 
   return canvas;
 }

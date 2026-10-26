@@ -176,19 +176,11 @@ export function LibraryCopyRow() {
         <h2 id="library-copy-title" className={styles.sectionTitle}>
           Library copy
         </h2>
-        <p
-          className={styles.libraryCopyText}
-          data-tone={notice?.tone}
-        >
+        <p className={styles.libraryCopyText} data-tone={notice?.tone}>
           {notice?.text ??
             "Keep a portable copy of your books and reading history. The copy is not encrypted."}
         </p>
-        <span
-          className={styles.visuallyHidden}
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
+        <span className={styles.visuallyHidden} role="status" aria-live="polite" aria-atomic="true">
           {notice?.tone === "quiet" ? notice.text : ""}
         </span>
         <span
@@ -200,21 +192,11 @@ export function LibraryCopyRow() {
           {notice?.tone === "error" ? notice.text : ""}
         </span>
         <div className={styles.libraryCopyActions}>
-          <button
-            type="button"
-            className={styles.primaryBtn}
-            onClick={backUp}
-            disabled={busy}
-          >
+          <button type="button" className={styles.primaryBtn} onClick={backUp} disabled={busy}>
             <BookCopy size={14} strokeWidth={1.7} />
             {activity === "backingUp" ? "Saving…" : "Back up"}
           </button>
-          <button
-            type="button"
-            className={styles.ghostBtn}
-            onClick={chooseRestore}
-            disabled={busy}
-          >
+          <button type="button" className={styles.ghostBtn} onClick={chooseRestore} disabled={busy}>
             <ArchiveRestore size={14} strokeWidth={1.7} />
             {activity === "preparing" ? "Checking…" : "Restore"}
           </button>
@@ -257,10 +239,6 @@ function bookCount(count: number): string {
   return count === 1 ? "one book" : `${count} books`;
 }
 
-function showBackgroundNotice(
-  text: string,
-  tone: "error" | "success",
-  persistent: boolean,
-): void {
+function showBackgroundNotice(text: string, tone: "error" | "success", persistent: boolean): void {
   useLibrary.getState().showAppNotice({ text, tone, persistent });
 }

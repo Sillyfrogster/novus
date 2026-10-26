@@ -34,8 +34,7 @@ function packageElementMatcher(document: Document) {
     Boolean(document.lookupPrefix(OPF_NAMESPACE));
 
   return (element: Element, name: string) =>
-    element.localName === name &&
-    (!usesNamespace || element.namespaceURI === OPF_NAMESPACE);
+    element.localName === name && (!usesNamespace || element.namespaceURI === OPF_NAMESPACE);
 }
 
 export function createPublicationCfiBridge<T extends SpineSection>(
@@ -46,10 +45,7 @@ export function createPublicationCfiBridge<T extends SpineSection>(
   sections: (T & CfiSection)[];
   resolve(cfi: string): ResolvedCfi | null;
 } {
-  const packageDocument = new DOMParser().parseFromString(
-    packageXml,
-    "application/xml",
-  );
+  const packageDocument = new DOMParser().parseFromString(packageXml, "application/xml");
   if (packageDocument.querySelector("parsererror")) {
     throw new Error(`Could not read the EPUB package: ${packagePath}`);
   }
@@ -60,9 +56,7 @@ export function createPublicationCfiBridge<T extends SpineSection>(
   );
   if (!spine) throw new Error("This EPUB has no reading order");
 
-  const itemrefs = [...spine.children].filter((element) =>
-    matches(element, "itemref"),
-  );
+  const itemrefs = [...spine.children].filter((element) => matches(element, "itemref"));
   if (itemrefs.length === 0) throw new Error("This EPUB has an empty reading order");
 
   const compat = CFI as typeof CFI & CfiModule;

@@ -1,14 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import {
-  AlignLeft,
-  Check,
-  ChevronDown,
-  Play,
-  Plus,
-  Search,
-  Trash2,
-  X,
-} from "lucide-react";
+import { AlignLeft, Check, ChevronDown, Play, Plus, Search, Trash2, X } from "lucide-react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { CuratorRail } from "../../components/CuratorRail";
@@ -184,12 +175,7 @@ function LibraryMasthead({
         )}
 
         {isDesktop && (
-          <button
-            type="button"
-            className={styles.addBtn}
-            onClick={onAddBooks}
-            disabled={importing}
-          >
+          <button type="button" className={styles.addBtn} onClick={onAddBooks} disabled={importing}>
             <Plus size={14} strokeWidth={1.8} />
             {importing ? "Importing…" : "Add books"}
           </button>
@@ -312,13 +298,7 @@ interface BookContextMenuProps {
   onRemove: (book: Book) => void;
 }
 
-function BookContextMenu({
-  menu,
-  onClose,
-  onRead,
-  onDetails,
-  onRemove,
-}: BookContextMenuProps) {
+function BookContextMenu({ menu, onClose, onRead, onDetails, onRemove }: BookContextMenuProps) {
   return (
     <>
       <button
@@ -420,10 +400,7 @@ export function Library({ dropping }: LibraryProps) {
 
   const beginPeek = (book: Book, rect: DOMRect) => {
     clearPeekTimer();
-    peekTimer.current = window.setTimeout(
-      () => setPeek({ book, rect }),
-      PEEK_DELAY_MS,
-    );
+    peekTimer.current = window.setTimeout(() => setPeek({ book, rect }), PEEK_DELAY_MS);
   };
 
   const endPeek = () => {
@@ -440,17 +417,11 @@ export function Library({ dropping }: LibraryProps) {
   const shelfLabel = activeCollection?.name ?? "All Books";
   const q = query.trim().toLowerCase();
   const shownBooks = useMemo(() => {
-    const memberIds = activeCollection
-      ? new Set(activeCollection.bookIds)
-      : null;
-    const collectionBooks = memberIds
-      ? books.filter((b) => memberIds.has(b.id))
-      : books;
+    const memberIds = activeCollection ? new Set(activeCollection.bookIds) : null;
+    const collectionBooks = memberIds ? books.filter((b) => memberIds.has(b.id)) : books;
     const filtered = q
       ? collectionBooks.filter(
-          (b) =>
-            b.title.toLowerCase().includes(q) ||
-            b.author.toLowerCase().includes(q),
+          (b) => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q),
         )
       : collectionBooks;
     return sortBooks(filtered, sort);
@@ -460,9 +431,7 @@ export function Library({ dropping }: LibraryProps) {
     () =>
       books
         .filter((b) => b.progress > 0 && b.progress < 1)
-        .sort(
-          (a, b) => (b.lastReadAt ?? b.addedAt) - (a.lastReadAt ?? a.addedAt),
-        )
+        .sort((a, b) => (b.lastReadAt ?? b.addedAt) - (a.lastReadAt ?? a.addedAt))
         .slice(0, CONTINUE_LIMIT),
     [books],
   );
@@ -548,16 +517,10 @@ export function Library({ dropping }: LibraryProps) {
         </div>
       )}
 
-      {dropping && (
-        <div className={styles.dropping}>Drop to add to your library</div>
-      )}
+      {dropping && <div className={styles.dropping}>Drop to add to your library</div>}
 
       {peek && !menu && !selected && (
-        <HoverPreview
-          book={peek.book}
-          storageRoot={storageRoot}
-          rect={peek.rect}
-        />
+        <HoverPreview book={peek.book} storageRoot={storageRoot} rect={peek.rect} />
       )}
 
       {menu && (

@@ -2,24 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { messageOf } from "../../lib/errors";
 import { recordSession, saveReadingState } from "../../lib/ipc";
-import {
-  type HighlightColors,
-  type ReaderSettings,
-  usePreferences,
-} from "../../lib/preferences";
+import { type HighlightColors, type ReaderSettings, usePreferences } from "../../lib/preferences";
 import type { HighlightColorKey } from "../../lib/types";
-import type {
-  ReaderEngine,
-  ReaderEvent,
-  ReaderPresentation,
-} from "../../reader/contract";
+import type { ReaderEngine, ReaderEvent, ReaderPresentation } from "../../reader/contract";
 import { ReadingSession } from "../../reader/readingSession";
-import type {
-  RelocateDetail,
-  RenderHighlight,
-  SelectionDetail,
-  TocItem,
-} from "../../reader/types";
+import type { RelocateDetail, RenderHighlight, SelectionDetail, TocItem } from "../../reader/types";
 import { useHighlights } from "../../store/highlights";
 import { useLibrary } from "../../store/library";
 
@@ -27,10 +14,7 @@ const DWELL_SAVE_MS = 3000;
 const UNMOUNT_SAVE_MIN_DWELL_MS = 1500;
 const SESSION_FLUSH_MS = 60_000;
 
-function toPresentation(
-  settings: ReaderSettings,
-  colors: HighlightColors,
-): ReaderPresentation {
+function toPresentation(settings: ReaderSettings, colors: HighlightColors): ReaderPresentation {
   return {
     readTheme: settings.readTheme,
     font: settings.font,
@@ -212,9 +196,8 @@ export function useReadingSession({
       sectionIndex: highlight.sectionIndex,
     }));
     const newId = emphasizedHighlight.current;
-    const emphasize = newId && highlights.some((highlight) => highlight.id === newId)
-      ? newId
-      : undefined;
+    const emphasize =
+      newId && highlights.some((highlight) => highlight.id === newId) ? newId : undefined;
     renderer.replaceHighlights(list, emphasize);
     if (emphasize) emphasizedHighlight.current = null;
   }, [ready, highlights]);

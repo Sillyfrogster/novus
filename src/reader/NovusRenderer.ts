@@ -127,8 +127,7 @@ const setStylesImportant = (el: HTMLElement, styles: Record<string, string>) => 
 
 const getDirection = (doc: Document) => {
   const { direction } = doc.defaultView!.getComputedStyle(doc.body);
-  const rtl =
-    doc.body.dir === "rtl" || direction === "rtl" || doc.documentElement.dir === "rtl";
+  const rtl = doc.body.dir === "rtl" || direction === "rtl" || doc.documentElement.dir === "rtl";
   return { rtl };
 };
 
@@ -256,10 +255,7 @@ export class NovusRenderer implements ReaderEngine {
     for (const listener of this.#listeners) listener(event);
   }
 
-  async open(
-    bookId: string,
-    initialTarget: string | null = null,
-  ): Promise<readonly TocItem[]> {
+  async open(bookId: string, initialTarget: string | null = null): Promise<readonly TocItem[]> {
     if (this.#disposed) throw new Error("Reader is closed");
     if (this.#book) throw new Error("Reader is already open");
 
@@ -283,8 +279,8 @@ export class NovusRenderer implements ReaderEngine {
     this.#tocProgress = new TOCProgress();
     await this.#tocProgress.init({ toc: book.toc ?? [], ids, splitHref, getFragment });
     const target = initialTarget ?? savedLocator;
-    const displayed = (target ? await this.#restoreTarget(target) : false) ||
-      (await this.#goToStart());
+    const displayed =
+      (target ? await this.#restoreTarget(target) : false) || (await this.#goToStart());
     if (!displayed) throw new Error("The book does not have a section Novus can display");
     return this.#toc;
   }
@@ -297,8 +293,7 @@ export class NovusRenderer implements ReaderEngine {
     let path = suffixAt < 0 ? target : target.slice(0, suffixAt);
     try {
       path = decodeURI(path);
-    } catch {
-    }
+    } catch {}
     const name = path.split("/").pop();
     const section = this.#sections.find(
       (item) => name && String(item.id).split("/").pop() === name,
@@ -316,8 +311,7 @@ export class NovusRenderer implements ReaderEngine {
     try {
       const resolved = book.resolveCFI?.(cfi);
       if (resolved) return resolved;
-    } catch {
-    }
+    } catch {}
     try {
       const parts = CFI.parse(cfi);
       const index = CFI.fake.toIndex((parts.parent ?? parts).shift());
@@ -378,9 +372,7 @@ export class NovusRenderer implements ReaderEngine {
     const flow = presentation.layout === "paged" ? "paginated" : "scrolled";
     const styles = readerCss(presentation);
     const changed =
-      flow !== this.#flow ||
-      presentation.measure !== this.maxInlineSize ||
-      styles !== this.#styles;
+      flow !== this.#flow || presentation.measure !== this.maxInlineSize || styles !== this.#styles;
     if (!changed) return;
 
     this.#flow = flow;
@@ -410,8 +402,7 @@ export class NovusRenderer implements ReaderEngine {
     this.#renderHighlights(doc);
     try {
       this.#anchor = this.#getVisibleRange();
-    } catch {
-    }
+    } catch {}
   }
 
   clearSelection(): void {
@@ -521,11 +512,7 @@ export class NovusRenderer implements ReaderEngine {
     return !this.#disposed && generation === this.#displayGeneration;
   }
 
-  #mountSection(
-    src: string,
-    index: number,
-    generation: number,
-  ): Promise<boolean> {
+  #mountSection(src: string, index: number, generation: number): Promise<boolean> {
     this.#cancelMount?.();
 
     const element = document.createElement("div");
@@ -553,10 +540,7 @@ export class NovusRenderer implements ReaderEngine {
         resolve(mounted);
       };
       const onLoad = () => {
-        if (
-          this.#disposed ||
-          generation !== this.#displayGeneration
-        ) {
+        if (this.#disposed || generation !== this.#displayGeneration) {
           element.remove();
           finish(false);
           return;
@@ -689,8 +673,7 @@ export class NovusRenderer implements ReaderEngine {
         if (!r || r.index !== this.#index || !r.anchor) continue;
         const range = r.anchor(doc) as Range;
         if (range && range.collapsed === false) resolved.push({ h, range });
-      } catch {
-      }
+      } catch {}
     }
     resolved.sort((a, b) => b.range.compareBoundaryPoints(Range.START_TO_START, a.range));
     for (const { h, range } of resolved) {
@@ -717,7 +700,7 @@ export class NovusRenderer implements ReaderEngine {
     });
   }
 
-  // layout 
+  // layout
 
   #beforeRender(): Layout {
     const { width, height } = this.#container.getBoundingClientRect();
@@ -863,8 +846,13 @@ export class NovusRenderer implements ReaderEngine {
   #rectMapper(): RectMapper {
     if (this.#flow === "scrolled") {
       const margin = this.#margin;
-      return ({ top, bottom }: DOMRect | { top?: number; bottom?: number; left: number; right: number }) =>
-        ({ left: (top ?? 0) + margin, right: (bottom ?? 0) + margin });
+      return ({
+        top,
+        bottom,
+      }: DOMRect | { top?: number; bottom?: number; left: number; right: number }) => ({
+        left: (top ?? 0) + margin,
+        right: (bottom ?? 0) + margin,
+      });
     }
     if (this.#rtl) {
       const pxSize = this.#pages * this.#containerSize;
@@ -877,7 +865,12 @@ export class NovusRenderer implements ReaderEngine {
     const doc = this.#iframe.contentDocument!;
     const size = this.#containerSize;
     if (this.#flow === "scrolled")
-      return getVisibleRange(doc, this.#start + this.#margin, this.#start + size - this.#margin, this.#rectMapper());
+      return getVisibleRange(
+        doc,
+        this.#start + this.#margin,
+        this.#start + size - this.#margin,
+        this.#rectMapper(),
+      );
     const s = this.#rtl ? -size : size;
     return getVisibleRange(doc, this.#start - s, this.#start + size - s, this.#rectMapper());
   }
@@ -914,7 +907,10 @@ export class NovusRenderer implements ReaderEngine {
       if (this.#flow === "scrolled") {
         await this.#scrollToOffset(mapped.left - this.#margin, reason);
       } else {
-        await this.#scrollToPage(Math.floor(mapped.left / this.#containerSize) + (this.#rtl ? -1 : 1), reason);
+        await this.#scrollToPage(
+          Math.floor(mapped.left / this.#containerSize) + (this.#rtl ? -1 : 1),
+          reason,
+        );
       }
       return;
     }
@@ -934,7 +930,12 @@ export class NovusRenderer implements ReaderEngine {
   #afterScroll(reason: ScrollReason): void {
     try {
       const range = this.#getVisibleRange();
-      if (reason !== "navigation" && reason !== "anchor" && reason !== "turn" && reason !== "resize")
+      if (
+        reason !== "navigation" &&
+        reason !== "anchor" &&
+        reason !== "turn" &&
+        reason !== "resize"
+      )
         this.#anchor = range;
 
       let fractionInSection: number;

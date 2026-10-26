@@ -20,7 +20,9 @@
   border: 1px solid color-mix(in srgb, var(--dot) 60%, var(--line));
   background: color-mix(in srgb, var(--dot) 82%, transparent);
   cursor: pointer;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .dot:hover {
   transform: scale(1.16);

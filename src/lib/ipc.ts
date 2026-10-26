@@ -1,13 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { TocItem } from "../reader/types";
-import type {
-  Book,
-  Collection,
-  Highlight,
-  HighlightColorKey,
-  InsightsData,
-} from "./types";
+import type { Book, Collection, Highlight, HighlightColorKey, InsightsData } from "./types";
 
 /** Typed wrappers over the Rust command surface. */
 

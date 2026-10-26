@@ -1,16 +1,5 @@
-import type {
-  HighlightColorKey,
-  ReadFont,
-  ReadLayout,
-  ReadTheme,
-  TextAlign,
-} from "../lib/types";
-import type {
-  RelocateDetail,
-  RenderHighlight,
-  SelectionDetail,
-  TocItem,
-} from "./types";
+import type { HighlightColorKey, ReadFont, ReadLayout, ReadTheme, TextAlign } from "../lib/types";
+import type { RelocateDetail, RenderHighlight, SelectionDetail, TocItem } from "./types";
 
 export interface ReaderPresentation {
   readTheme: ReadTheme;

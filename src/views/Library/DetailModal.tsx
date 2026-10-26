@@ -129,11 +129,11 @@ export function DetailModal({
       const canvas = await renderHighlightCard(h, book);
       const context = canvas.getContext("2d", { willReadFrequently: true });
       if (!context) throw new Error("canvas unavailable");
-      const copied = await copyImage(
-        context.getImageData(0, 0, canvas.width, canvas.height),
-      );
+      const copied = await copyImage(context.getImageData(0, 0, canvas.width, canvas.height));
       showActionNotice(
-        copied ? "Highlight image copied." : "Novus could not copy this image. Try saving it instead.",
+        copied
+          ? "Highlight image copied."
+          : "Novus could not copy this image. Try saving it instead.",
         copied ? "success" : "error",
       );
     } catch {
@@ -313,7 +313,10 @@ export function DetailModal({
                             <dd>{colors[h.color]?.label ?? h.color}</dd>
                             <dt>Where</dt>
                             <dd>
-                              {[h.chapterLabel?.trim(), h.location != null ? `Location ${h.location + 1}` : null]
+                              {[
+                                h.chapterLabel?.trim(),
+                                h.location != null ? `Location ${h.location + 1}` : null,
+                              ]
                                 .filter(Boolean)
                                 .join(" · ") || "—"}
                             </dd>
@@ -348,9 +351,7 @@ export function DetailModal({
         <HighlightContextMenu
           x={menu.x}
           y={menu.y}
-          onDetails={() =>
-            setExpandedId((id) => (id === menu.h.id ? null : menu.h.id))
-          }
+          onDetails={() => setExpandedId((id) => (id === menu.h.id ? null : menu.h.id))}
           onCopy={() => copyHighlightText(menu.h)}
           onCopyImage={() => copyHighlightImage(menu.h)}
           onSaveImage={() => saveHighlightImage(menu.h)}

@@ -8,14 +8,12 @@ const FONT_STACKS: Record<ReadFont, string> = {
   modern: "'Source Serif 4', Georgia, serif",
 };
 
-const THEMES: Record<
-  ReaderPresentation["readTheme"],
-  { background: string; foreground: string }
-> = {
-  light: { background: "#f4f5f7", foreground: "#1b1d23" },
-  sepia: { background: "#ece1cf", foreground: "#433a2b" },
-  dark: { background: "#0c0d10", foreground: "#c9ccd4" },
-};
+const THEMES: Record<ReaderPresentation["readTheme"], { background: string; foreground: string }> =
+  {
+    light: { background: "#f4f5f7", foreground: "#1b1d23" },
+    sepia: { background: "#ece1cf", foreground: "#433a2b" },
+    dark: { background: "#0c0d10", foreground: "#c9ccd4" },
+  };
 
 function tintFor(color: string): string {
   return `color-mix(in srgb, ${color} 34%, transparent)`;
